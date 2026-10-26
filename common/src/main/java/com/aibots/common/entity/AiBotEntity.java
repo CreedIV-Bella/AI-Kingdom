@@ -129,6 +129,8 @@ public class AiBotEntity extends PathfinderMob {
         if (identityInitialized || level().isClientSide) {
             return;
         }
+        // Royal citizens must never despawn just because a player is far away.
+        setPersistenceRequired();
         if (getCustomName() == null) {
             String firstName = FIRST_NAMES[random.nextInt(FIRST_NAMES.length)];
             String lastName = LAST_NAMES[random.nextInt(LAST_NAMES.length)];
@@ -159,6 +161,13 @@ public class AiBotEntity extends PathfinderMob {
             personality = tag.getString(PERSONALITY_KEY);
         }
         identityInitialized = tag.getBoolean(INITIALIZED_KEY);
+        // Protect NPCs created by older builds too, not just newly summoned NPCs.
+        setPersistenceRequired();
+    }
+
+    @Override
+    public boolean removeWhenFarAway(double distanceToClosestPlayer) {
+        return false;
     }
 
     @Override
