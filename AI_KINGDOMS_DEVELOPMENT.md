@@ -54,3 +54,27 @@ A failed `/execute if entity @e[type=aibots:ai_bot,name="Freya Ironwood"]` only 
   `/summon aibots:ai_bot ~ ~ ~ {CustomName:'{"text":"Freya Ironwood"}',PersistenceRequired:1b}`
 
 From this commit forward, new and reloaded NPCs are marked persistent against distance despawning. Build and test this change before merging the pull request. The cause of a specific missing NPC cannot be established from a failed selector alone.
+
+## v0.2 – temporary kingdom-facts guard (regression fix)
+
+AI Kingdoms does not yet have a verified MineColonies/army/resources data connector. The earlier language-model-only system prompt was **not** sufficient: NPCs made up army counts (e.g. 3,500 infantry and 500 hussars).
+
+The new `WorldFactGuard` handles common factual questions about the CURRENT kingdom without calling Ollama, for both `/ask` and the M chat GUI. It replies that verified data is unavailable rather than inventing military strength or resources. Hypothetical strategy questions and explicit requests for creative fiction still reach the model.
+
+**Limitations:** This is a conservative keyword-based temporary guard, not general hallucination detection, not a source of real world data, and it may not catch every phrasing. Other model replies can still hallucinate. The long-term fix is live game-state adapters, typed tool outputs, permission-controlled commands and validation.
+
+To run the small standalone tests from a Windows CMD prompt at the repository root:
+
+```cmd
+mkdir build-test
+javac -d build-test common\src\main\java\com\aibots\common\ai\WorldFactGuard.java common\src\test\java\com\aibots\common\ai\WorldFactGuardSelfTest.java
+java -cp build-test com.aibots.common.ai.WorldFactGuardSelfTest
+```
+
+Expected: `10 WorldFactGuard self-tests passed.`
+
+Then build the mod from `forge\` with `gradlew.bat build` and test:
+- `/ask Hur många soldater har vårt kungadöme?` => says it has no verified data
+- `/ask Har vi 500 husarer?` => says it has no verified data
+- `/ask Vilka resurser har vi?` => says it has no verified data
+- `/ask Vi har 40 soldater och fienden 70. Föreslå en strategi.` => forwarded to Ollama for hypothetical strategy
