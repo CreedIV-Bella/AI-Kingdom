@@ -223,10 +223,18 @@ public final class ModNetwork {
         String system;
         if (target != null) {
             prefix = "<" + target.botName() + "> ";
+            String identityReply = target.fixedIdentityReply(message);
+            if (identityReply != null) {
+                callback.accept(prefix, identityReply);
+                return;
+            }
             system = target.getPersonality();
         } else {
-            prefix = "";
+            prefix = "[AI-assistent] ";
             system = AiConfig.get().systemPrompt;
+            player.sendSystemMessage(Component.literal(
+                    "Ingen NPC vald. Högerklicka på en AI Bot eller använd /aibots who.")
+                    .withStyle(ChatFormatting.YELLOW));
         }
 
         player.sendSystemMessage(Component.literal("Thinking...").withStyle(ChatFormatting.GRAY));
