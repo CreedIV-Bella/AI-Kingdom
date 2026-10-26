@@ -1,5 +1,6 @@
 package com.aibots.common.entity;
 
+import com.aibots.common.ai.WorldFactGuard;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
@@ -106,6 +107,15 @@ public class AiBotEntity extends PathfinderMob {
             return "Jag heter " + botName() + " och är " + role + " i AI Kingdoms.";
         }
         return null;
+    }
+
+    /**
+     * Some answers must come from game code instead of a generative model.
+     * Returns null only when the LLM may be consulted.
+     */
+    public String verifiedReply(String message) {
+        String identity = fixedIdentityReply(message);
+        return identity != null ? identity : WorldFactGuard.replyIfUnknown(message);
     }
 
     public String botName() {
