@@ -41,10 +41,14 @@ public final class WorldFactGuard {
             return null;
         }
 
-        boolean concernsOurWorld = containsAny(question,
-                "vi ", " vi", "oss", "vårt", "vår ", "våra", "mitt ",
-                "mina", "min ", "riket", "rike", "kungadöme", "kungarik",
-                "koloni", "vår stad", "armén", "armé", "stadens");
+        // Match pronouns and known local entities as words, not parts of words
+        // (e.g. do not treat a question about "romarriket" as our kingdom).
+        String padded = " " + question.replaceAll("[^\\p{L}\\p{N}]+", " ")
+                .replaceAll("\\s+", " ").trim() + " ";
+        boolean concernsOurWorld = containsAny(padded,
+                " vi ", " oss ", " vårt ", " vår ", " våra ",
+                " mitt ", " mina ", " min ", " riket ", " kungadömet ",
+                " kungariket ", " kolonin ", " armén ", " staden ");
 
         boolean concernsGameState = containsAny(question,
                 "soldat", "infanter", "husar", "trupp", "armé", "arme",
