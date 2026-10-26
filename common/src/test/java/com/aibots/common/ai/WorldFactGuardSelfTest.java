@@ -15,13 +15,21 @@ public final class WorldFactGuardSelfTest {
         expectBlocked("Vad vet du om vårt kungadöme?");
         expectBlocked("Ge mig en rapport om armén.");
         expectBlocked("Har vi 500 husarer?");
+        expectBlocked("Hur många infanterisoldater finns i vår armé?");
+        expectBlocked("Hur många husarer har vårt rike?");
+        expectBlocked("Vad vet du om våra förråd?");
 
         expectFree("Hur många soldater hade romarriket?");
         expectFree("Vi har 40 soldater och fienden 70. Föreslå en strategi.");
         expectFree("Hitta på en historia om vårt rike.");
         expectFree("Vad heter du?");
 
-        System.out.println("10 WorldFactGuard self-tests passed.");
+        String unknown = WorldFactGuard.UNKNOWN_WORLD_STATE;
+        if (!unknown.contains("vårt") || !unknown.contains("på några")
+                || unknown.contains("Ã") || unknown.contains("Â")) {
+            throw new AssertionError("Swedish letters decoded incorrectly: " + unknown);
+        }
+        System.out.println("14 WorldFactGuard self-tests passed (including UTF-8 text).");
     }
 
     private static void expectBlocked(String input) {
