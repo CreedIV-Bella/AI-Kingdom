@@ -9,6 +9,7 @@ This repository is a fork of `devoffeed/ai-job-mod`. Original license and notice
 - NPCs spawned **without** an explicit custom name receive a medieval-style first and last name.
 - Generated names and one random personality trait are stored in the Minecraft entity NBT and survive saving/reloading the world.
 - Existing `/summon ... {CustomName:...}` names are preserved.
+- NPCs are marked persistent; they must not despawn solely because the player moves away. This does **not** prevent death, `/kill`, mod conflicts, or deletion of world data.
 - NPC replies receive a per-character system prompt: their persistent name, a default royal-advisor role, Swedish-language output, brief replies, and instructions not to invent confirmed in-game facts or claim tasks were completed.
 - `setRole` and `setPersonality` are available in code for later expansion.
 
@@ -41,3 +42,15 @@ This repository is a fork of `devoffeed/ai-job-mod`. Original license and notice
 ### Feedback
 
 If the build fails, save the error output. If the game crashes, keep `latest.log` and the crash report from the copied CurseForge profile. Do not edit or replace the original backup.
+
+## If a named NPC disappears
+
+A failed `/execute if entity @e[type=aibots:ai_bot,name="Freya Ironwood"]` only proves that the NPC is not **loaded in the current dimension**. It does not inspect entities stored in unloaded chunks or other dimensions.
+
+- First revisit Freya's last known location (in the same world and dimension), to force her chunk to load.
+- Then run `/execute as @e[type=aibots:ai_bot] run data get entity @s CustomName` to inspect the names of currently loaded bots.
+- If Freya exists in a backup, restore a **copy** of the world from before her disappearance to recover the same entity/UUID.
+- If she has died or been deleted, this mod currently has no resurrection/history system. You can summon a **new** bot under that name, but it will not be the original entity:
+  `/summon aibots:ai_bot ~ ~ ~ {CustomName:'{"text":"Freya Ironwood"}',PersistenceRequired:1b}`
+
+From this commit forward, new and reloaded NPCs are marked persistent against distance despawning. Build and test this change before merging the pull request. The cause of a specific missing NPC cannot be established from a failed selector alone.
