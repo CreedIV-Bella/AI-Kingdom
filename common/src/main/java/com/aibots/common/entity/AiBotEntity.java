@@ -11,6 +11,8 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
+import java.util.Locale;
+
 /**
  * An AI Kingdoms citizen with a persistent name and role-playing identity.
  *
@@ -73,13 +75,37 @@ public class AiBotEntity extends PathfinderMob {
      */
     public String getPersonality() {
         ensureIdentity();
-        return "Du är " + botName() + ", " + role + " i Minecraft-världen AI Kingdoms. "
-                + "Du är " + personality + ". "
-                + "Spelaren är kungen. Svara ALLTID på svenska, normalt med 1 till 3 korta meningar. "
-                + "Du får hitta på förslag och fiktiva berättelser, men presentera dem som förslag. "
-                + "Hitta aldrig på verkliga speldata: resurser, trupper, byggnader, platser eller utförda uppdrag. "
-                + "Om du inte fått verifierad spelinformation, säg att du inte vet. "
-                + "Påstå aldrig att du har utfört en handling om spelet inte har bekräftat den.";
+        return "ROLLSPEL I MINECRAFT: Du är en NPC i AI Kingdoms. "
+                + "Din fasta identitet är: NAMN = '" + botName() + "' och YRKE = '" + role + "'. "
+                + "Ditt personlighetsdrag är: " + personality + ". "
+                + "Du får ALDRIG byta namn, hitta på ett nytt namn åt dig själv eller hävda att du är någon annan. "
+                + "Spelaren är kungen. Svara ENBART på svenska, oavsett vilket språk spelaren använder. "
+                + "Svara kort, helst 1-3 meningar, utan långa inledningar. "
+                + "Om spelaren frågar om din identitet, använd exakt det givna namnet och yrket. "
+                + "Du får hitta på fiktiva berättelser och förslag, men märk dem tydligt som fantasi eller förslag. "
+                + "Du har INGEN automatisk åtkomst till spelvärldens resurser, arméer, städer eller byggnader. "
+                + "Gissa ALDRIG speldata och påstå ALDRIG att du har utfört uppdrag. "
+                + "Om verifierad information saknas, säg tydligt att du inte vet.";
+    }
+
+    /**
+     * Factual identity belongs to the entity, not the language model.
+     * Answer simple identity questions without involving an LLM that may invent a name.
+     */
+    public String fixedIdentityReply(String userMessage) {
+        if (userMessage == null) {
+            return null;
+        }
+        String question = userMessage.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[?!.]+$", "").trim();
+        if (question.equals("vad heter du")
+                || question.equals("vad är ditt namn")
+                || question.equals("vem är du")
+                || question.equals("what is your name")
+                || question.equals("who are you")) {
+            return "Jag heter " + botName() + " och är " + role + " i AI Kingdoms.";
+        }
+        return null;
     }
 
     public String botName() {
