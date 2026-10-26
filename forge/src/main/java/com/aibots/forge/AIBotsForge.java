@@ -39,6 +39,8 @@ public class AIBotsForge {
         );
         event.getDispatcher().register(
             Commands.literal("aibots")
+                .then(Commands.literal("who")
+                    .executes(this::who))
                 .then(Commands.literal("stop")
                     .executes(this::stop))
                 .then(Commands.literal("reload")
@@ -69,10 +71,17 @@ public class AIBotsForge {
         String system;
         if (target != null) {
             prefix = "<" + target.botName() + "> ";
+            String identityReply = target.fixedIdentityReply(message);
+            if (identityReply != null) {
+                player.sendSystemMessage(Component.literal(prefix + identityReply).withStyle(ChatFormatting.WHITE));
+                return 1;
+            }
             system = target.getPersonality();
         } else {
-            prefix = "";
+            prefix = "[AI-assistent] ";
             system = AiConfig.get().systemPrompt;
+            player.sendSystemMessage(Component.literal("Ingen NPC vald. Högerklicka på en NPC eller använd /aibots who.")
+                    .withStyle(ChatFormatting.YELLOW));
         }
 
         player.sendSystemMessage(Component.literal(prefix + "Thinking...").withStyle(ChatFormatting.GRAY));
@@ -81,6 +90,28 @@ public class AIBotsForge {
                 player.sendSystemMessage(Component.literal(prefix + reply).withStyle(ChatFormatting.WHITE));
             });
         });
+        return 1;
+    }
+
+    private int who(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        ServerPlayer player;
+        try {
+            player = ctx.getSource().getPlayerOrException();
+        } catch (Exception e) {
+            ctx.getSource().sendFailure(Component.literal("Must be run by a player"));
+            return 0;
+        }
+
+        AiBotEntity target = PlayerConversation.getTarget(player);
+        if (target == null) {
+            player.sendSystemMessage(Component.literal(
+                    "Ingen NPC vald. Högerklicka på en AI Bot för att börja prata.")
+                    .withStyle(ChatFormatting.YELLOW));
+        } else {
+            player.sendSystemMessage(Component.literal(
+                    "Du pratar med " + target.botName() + " (" + target.getRole() + ").")
+                    .withStyle(ChatFormatting.GREEN));
+        }
         return 1;
     }
 
