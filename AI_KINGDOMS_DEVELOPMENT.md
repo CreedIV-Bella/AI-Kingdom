@@ -67,14 +67,31 @@ To run the small standalone tests from a Windows CMD prompt at the repository ro
 
 ```cmd
 mkdir build-test
-javac -d build-test common\src\main\java\com\aibots\common\ai\WorldFactGuard.java common\src\test\java\com\aibots\common\ai\WorldFactGuardSelfTest.java
+javac -encoding UTF-8 -d build-test common\src\main\java\com\aibots\common\ai\WorldFactGuard.java common\src\test\java\com\aibots\common\ai\WorldFactGuardSelfTest.java
 java -cp build-test com.aibots.common.ai.WorldFactGuardSelfTest
 ```
 
-Expected: `10 WorldFactGuard self-tests passed.`
+Expected: `14 WorldFactGuard self-tests passed (including UTF-8 text).`
 
 Then build the mod from `forge\` with `gradlew.bat build` and test:
 - `/ask Hur många soldater har vårt kungadöme?` => says it has no verified data
 - `/ask Har vi 500 husarer?` => says it has no verified data
 - `/ask Vilka resurser har vi?` => says it has no verified data
 - `/ask Vi har 40 soldater och fienden 70. Föreslå en strategi.` => forwarded to Ollama for hypothetical strategy
+
+## UTF-8 fix after the first Minecraft test
+
+The screenshot revealed that the guard's output said broken strings such as `vÃ¥rt` instead of `vårt`, and the question `Hur många soldater har vårt kungadöme?` reached the LLM while `Har vi 500 husarer?` was correctly blocked. These were consistent with the compiler interpreting UTF-8 Java files using a Windows legacy character encoding.
+
+Both Forge and NeoForge `build.gradle` files now explicitly configure Java compilation with `options.encoding = 'UTF-8'`. The self-test checks that the guard handles more question variants **and** that Swedish output does not contain common mojibake artifacts.
+
+**Rebuild after changing compiler encoding** to force the old `.class` files to be regenerated:
+
+```cmd
+cd /d C:\Users\johan\AI-Kingdom
+git pull --ff-only
+cd forge
+gradlew.bat clean build
+```
+
+Then close Minecraft and replace the old test jar in `mods/` with the new output from `forge/build/libs/`. Verify Swedish letters, both real-state questions, and a hypothetical strategy prompt. Keep the world backup and keep only one `aibots` jar loaded.
