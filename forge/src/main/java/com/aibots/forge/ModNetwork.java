@@ -223,7 +223,7 @@ public final class ModNetwork {
         String system;
         if (target != null) {
             prefix = "<" + target.botName() + "> ";
-            String identityReply = target.fixedIdentityReply(message);
+            String identityReply = target.verifiedReply(message);
             if (identityReply != null) {
                 callback.accept(prefix, identityReply);
                 return;
