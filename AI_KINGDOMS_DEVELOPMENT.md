@@ -18,6 +18,7 @@ This repository is a fork of `devoffeed/ai-job-mod`. Original license and notice
 - Persistent conversational memory.
 - NPC job commands, pathfinding tasks, role-selection GUI, unique skins, voices, or knowledge of live MineColonies/Create data.
 - Guaranteed uniqueness of generated names. Distinct NPCs may share a generated name.
+- Guaranteed Swedish output for arbitrary conversations. Prompts influence the model but cannot enforce language or prevent hallucinations. Bare name/identity questions use a deterministic response.
 
 ## Test on Minecraft Forge 1.20.1
 
@@ -28,10 +29,12 @@ This repository is a fork of `devoffeed/ai-job-mod`. Original license and notice
 5. Find the new jar in `forge/build/libs/`. Use the **reobfuscated** normal release jar, not `*-sources.jar` or `*-dev.jar`.
 6. Shut down Minecraft. In a **copy** of your modpack, move the original `aibots-forge-1.0.0.jar` out of `mods/` and put the newly built jar there instead. Do **not** load both jars.
 7. Open a **copy** of the creative test world. Run `/summon aibots:ai_bot ~ ~ ~` without `CustomName` and verify that a generated name appears.
-8. Right-click the new NPC, press `M` or use `/ask`, and ask in Swedish: `Vad heter du?`.
-9. Save and quit the world. Reopen it and confirm that the name and conversational identity stay the same.
-10. Test a manually named NPC with `/summon aibots:ai_bot ~ ~ ~ {CustomName:'"Kunglig Rådgivare"'}`; its name must not be overwritten.
-11. Ask about troops or resources that have not been provided. The bot should admit that it doesn't know.
+8. Right-click the new NPC, then run `/aibots who`: it must show the exact NPC name and role. If it says no NPC is selected, right-click again. Conversation selection is temporary, not persisted across world/server restarts.
+9. Ask `/ask Vad heter du?`: the exact persisted name should be returned in Swedish without a language-model call. Repeat using `M` and the same question.
+10. Ask `/ask Vad vet du om vårt kungadöme?`: the model should answer in Swedish and avoid inventing real game facts. This is a *behavioral prompt test*, not a guarantee against hallucinations.
+11. Save and quit the world. Reopen it and confirm that the name and conversational identity stay the same; right-click again to select the NPC for chat.
+12. Test a manually named NPC with `/summon aibots:ai_bot ~ ~ ~ {CustomName:'"Kunglig Rådgivare"'}`; its name must not be overwritten.
+13. Ask about troops or resources that have not been provided. The bot should admit that it doesn't know.
 
 **Important:** A prompt improves reliability but cannot eliminate hallucinations. The NPC still has no read-access to verified game state. Later features must retrieve world facts and validate commands in code.
 
