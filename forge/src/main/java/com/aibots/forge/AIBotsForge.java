@@ -71,7 +71,7 @@ public class AIBotsForge {
         String system;
         if (target != null) {
             prefix = "<" + target.botName() + "> ";
-            String identityReply = target.fixedIdentityReply(message);
+            String identityReply = target.verifiedReply(message);
             if (identityReply != null) {
                 player.sendSystemMessage(Component.literal(prefix + identityReply).withStyle(ChatFormatting.WHITE));
                 return 1;
