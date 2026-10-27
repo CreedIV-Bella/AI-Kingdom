@@ -150,7 +150,7 @@ public final class MineColoniesBridge {
                     .append("Inga byggordrar har ändrats.");
             return report.toString();
         } catch (ReflectiveOperationException
-                 | ClassCastException | LinkageError exception) {
+                 | RuntimeException | LinkageError exception) {
             Throwable cause = exception instanceof InvocationTargetException e
                     ? e.getTargetException() : exception;
             return "Kunde inte läsa MineColonies API: "
