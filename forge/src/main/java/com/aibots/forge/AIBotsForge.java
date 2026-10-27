@@ -22,6 +22,7 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.ModList;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 
 @Mod(AIBotsForge.MOD_ID)
@@ -67,7 +68,10 @@ public class AIBotsForge {
                     .then(Commands.literal("probe")
                         .executes(this::colonyProbe))
                     .then(Commands.literal("status")
-                        .executes(this::colonyStatus)))
+                        .executes(this::colonyStatus))
+                    .then(Commands.literal("prioritize")
+                        .then(Commands.argument("orderId", IntegerArgumentType.integer(1))
+                            .executes(this::colonyPrioritize))))
                 .then(Commands.literal("go")
                     .then(Commands.argument("position", Vec3Argument.vec3())
                         .executes(this::go)))
@@ -291,6 +295,29 @@ public class AIBotsForge {
         AiBotEntity bot = PlayerConversation.getTarget(player);
         String report = MineColoniesBridge.status(player, bot);
         player.sendSystemMessage(Component.literal(report).withStyle(ChatFormatting.AQUA));
+        return 1;
+    }
+
+    private int colonyPrioritize(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        ServerPlayer player;
+        try {
+            player = ctx.getSource().getPlayerOrException();
+        } catch (Exception e) {
+            ctx.getSource().sendFailure(Component.literal("Bara spelare kan hantera kolonin."));
+            return 0;
+        }
+        int orderId = IntegerArgumentType.getInteger(ctx, "orderId");
+        AiBotEntity bot = PlayerConversation.getTarget(player);
+        if (bot == null) {
+            player.sendSystemMessage(Component.literal(
+                    "Välj Aldric först. Prioriteringar måste ges till en NPC.")
+                    .withStyle(ChatFormatting.YELLOW));
+            return 0;
+        }
+        String report = MineColoniesBridge.prioritize(player, bot, orderId);
+        player.sendSystemMessage(Component.literal(
+                bot.botName() + ": " + report).withStyle(ChatFormatting.AQUA));
+        ModNetwork.speakNpc(player, bot, report);
         return 1;
     }
 
