@@ -280,6 +280,68 @@ public final class MineColoniesBridge {
         }
     }
 
+
+    /**
+     * Resolve a named waiting project by examining real colony work orders.
+     * Refuses ambiguous matches; never hardcodes Lakeside's order IDs.
+     */
+    public static String prioritizeGuardTower(ServerPlayer player, AiBotEntity bot) {
+        if (player == null || !net.minecraftforge.fml.ModList.get().isLoaded("minecolonies")) {
+            return "MineColonies är inte tillgängligt.";
+        }
+        try {
+            Level world = player.serverLevel();
+            BlockPos pos = player.blockPosition();
+            Class<?> type = Class.forName("com.minecolonies.api.colony.IColonyManager");
+            Object manager = type.getMethod("getInstance").invoke(null);
+            Object colony = type.getMethod(
+                    "getColonyByPosFromWorld", Level.class, BlockPos.class)
+                    .invoke(manager, world, pos);
+            if (colony == null) {
+                colony = type.getMethod(
+                        "getClosestColony", Level.class, BlockPos.class)
+                        .invoke(manager, world, pos);
+                if (colony != null
+                        && call(colony, "getCenter") instanceof BlockPos center
+                        && pos.distSqr(center) > MAX_NEARBY_DISTANCE_SQUARED) {
+                    colony = null;
+                }
+            }
+            if (colony == null) {
+                return "Ingen koloni i närheten. Gå till stadshuset.";
+            }
+            Object workManager = call(colony, "getWorkManager");
+            Map<?, ?> orders = (Map<?, ?>) call(workManager, "getWorkOrders");
+            Integer matchingId = null;
+            for (Object order : orders.values()) {
+                if (order == null || Boolean.TRUE.equals(call(order, "isClaimed"))) {
+                    continue;
+                }
+                Object display = call(order, "getDisplayName");
+                String name = display instanceof Component component
+                        ? component.getString() : String.valueOf(display);
+                String normalized = name.toLowerCase(java.util.Locale.ROOT)
+                        .replace(" ", "").replace("_", "");
+                if (normalized.contains("guardtower")
+                        || normalized.contains("watchtower")
+                        || normalized.contains("vakttorn")) {
+                    int id = ((Number) call(order, "getID")).intValue();
+                    if (matchingId != null) {
+                        return "Det finns flera väntande vakttorn. Säg arbetsorderns nummer.";
+                    }
+                    matchingId = id;
+                }
+            }
+            if (matchingId == null) {
+                return "Jag hittar ingen väntande arbetsorder för ett vakttorn.";
+            }
+            return prioritize(player, bot, matchingId);
+        } catch (ReflectiveOperationException
+                 | RuntimeException | LinkageError exception) {
+            return "Jag kan inte kontrollera vakttornets arbetsorder just nu.";
+        }
+    }
+
     private static Object call(Object object, String method)
             throws ReflectiveOperationException {
         if (object == null) {
