@@ -9,6 +9,7 @@ This process NEVER executes model text as commands. It only plays audio.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 import tempfile
 import threading
@@ -20,6 +21,48 @@ SPEECH_FILE = Path.home() / "AI-Kingdoms" / "voice-reply.txt"
 DEFAULT_VOICE = os.environ.get("AI_KINGDOMS_TTS_VOICE", "sv_SE-nst-medium")
 MAX_SPEECH_AGE_MS = 60_000
 MAX_UTTERANCE_CHARS = 500
+
+
+def prepare_speech_text(raw_text: str) -> str:
+    """Make NPC text natural to speak. Chat keeps the exact world report."""
+    text = " ".join(raw_text.split()).strip()
+    if not text:
+        return ""
+
+    # Speak actual server-derived colony statistics, not raw debug formatting.
+    if text.startswith("MineColonies:"):
+        colony = re.search(r"^MineColonies:\s*(.*?)\s*\(#\d+\)", text)
+        population = re.search(r"Invånare\s+(\d+)\s*/\s*(\d+)", text)
+        buildings = re.search(r"Byggnader\s+(\d+)", text)
+        builder_count = re.search(r"Builders\s+(\d+)", text)
+        work_orders = re.search(
+            r"Pågående/registrerade arbetsorder:\s*(\d+)", text
+        )
+        if colony and population and buildings and builder_count and work_orders:
+            name = colony.group(1).strip()
+            return (
+                f"Kolonin {name} har {population.group(1)} av "
+                f"{population.group(2)} invånare, "
+                f"{buildings.group(1)} registrerade byggnader och "
+                f"{builder_count.group(1)} byggare. "
+                f"Det finns {work_orders.group(1)} registrerade arbetsordrar."
+            )
+
+    # Fallback for other technical reports and ordinary conversation.
+    text = re.sub(r"BlockPos\s*\{[^}]*\}", " en position ", text)
+    text = re.sub(r"\[#[^\]]+\]", " ", text)
+    text = re.sub(r"\(#\d+\)", " ", text)
+    text = re.sub(r"https?://\S+", " en webbadress ", text)
+    text = text.replace(chr(96), "")
+    text = re.sub(r"(?<!\w)#\d+\b", " ", text)
+    text = text.replace("&", " och ").replace("%", " procent ")
+    text = text.replace("=", " är lika med ")
+    text = text.replace("/", " eller ").replace("\\", " ")
+    text = re.sub(r"[\[\]{}<>#*_|\~]+", " ", text)
+    text = re.sub(r"\s+([,.!?;:])", r"\1", text)
+    text = re.sub(r"[;:]+", ",", text)
+    text = re.sub(r"\s{2,}", " ", text).strip(" ,;:")
+    return text
 
 
 def run_speech_loop(shutdown: threading.Event) -> None:
@@ -62,11 +105,13 @@ def run_speech_loop(shutdown: threading.Event) -> None:
                 continue
 
             speaker = parts[1][:80]
-            speech = parts[2].strip()[:MAX_UTTERANCE_CHARS]
+            raw_text = parts[2].strip()
+            speech = prepare_speech_text(raw_text)[:MAX_UTTERANCE_CHARS]
             if not speech:
                 continue
 
-            print(f"{speaker} säger: {speech}")
+            print(f"{speaker} säger: {raw_text}")
+            print(f"Uppläst: {speech}")
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as file:
                 wav_path = Path(file.name)
 
