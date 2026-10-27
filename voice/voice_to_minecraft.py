@@ -71,6 +71,9 @@ def command_from_speech(text: str) -> str | None:
         return "/aibots inspect"
     if plain in {"vem pratar jag med", "vem är vald"}:
         return "/aibots who"
+    if plain in {"välj aldric", "välj aldric ravencrest",
+                 "jag vill prata med aldric", "prata med aldric"}:
+        return "/aibots select Aldric Ravencrest"
     return "/ask " + cleaned
 
 
