@@ -9,8 +9,12 @@ import net.minecraft.resources.ResourceLocation;
 
 public class AiBotRenderer extends HumanoidMobRenderer<AiBotEntity, HumanoidModel<AiBotEntity>> {
 
-    private static final ResourceLocation TEXTURE =
-            new ResourceLocation(AIBotsForgeClient.MOD_ID, "textures/entity/ai_bot.png");
+    private static final ResourceLocation[] SKINS = {
+            new ResourceLocation(AIBotsForgeClient.MOD_ID, "textures/entity/ai_bot_royal.png"),
+            new ResourceLocation(AIBotsForgeClient.MOD_ID, "textures/entity/ai_bot_artisan.png"),
+            new ResourceLocation(AIBotsForgeClient.MOD_ID, "textures/entity/ai_bot_guard.png"),
+            new ResourceLocation(AIBotsForgeClient.MOD_ID, "textures/entity/ai_bot_scholar.png")
+    };
 
     public AiBotRenderer(EntityRendererProvider.Context context) {
         super(context, new HumanoidModel<>(context.bakeLayer(ModelLayers.PLAYER)), 0.5f);
@@ -18,6 +22,6 @@ public class AiBotRenderer extends HumanoidMobRenderer<AiBotEntity, HumanoidMode
 
     @Override
     public ResourceLocation getTextureLocation(AiBotEntity entity) {
-        return TEXTURE;
+        return SKINS[Math.floorMod(entity.getSkinVariant(), SKINS.length)];
     }
 }
