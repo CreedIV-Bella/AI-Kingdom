@@ -35,3 +35,6 @@ Thumbs.db
 voice/.venv/
 __pycache__/
 *.pyc
+
+# Downloaded third-party TTS models (do not commit licensed binaries)
+voice/models/
