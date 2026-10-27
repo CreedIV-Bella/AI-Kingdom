@@ -282,3 +282,58 @@ Expected: 12 MineColonies priority intent tests passed.
 
 These tests prove parsing only. They do not compile the Forge mod or verify
 MineColonies changes until the user runs gradlew clean build and tests in-game.
+## 2026-10-27 — Autonomous city-steward prototype (housing only)
+
+**Committed but needs the user's fresh Forge compile + in-game verification.**
+The player does NOT want the Guard Tower as the test; the intended first
+project is to diagnose Lakeside housing and automatically queue legitimate
+MineColonies work orders for existing registered residential hut sites.
+
+Code: ColonyDevelopmentPlanner + ColonyDevelopmentIntent + steward NBT flags.
+
+Available commands:
+- `/aibots colony develop` - analyze housing shortage, and create a new
+  MineColonies BUILD or UPGRADE order on ONE registered eligible Residence hut
+  when needed, using building.requestUpgrade(player, BlockPos.ZERO).
+- `/aibots colony auto on` - colony OWNER explicitly enables steward mode.
+  Every ~2 Minecraft minutes, while owner and NPC are nearby and loaded,
+  the planner checks housing; it may queue work without asking each time.
+- `/aibots colony auto off` - pause automatic checks.
+- `/ask Aldric, se vad vi behöver i Lakeside och bygg det.` - one-shot planner.
+- `/ask Aldric, bygg ut staden självständigt, du får bestämma.` - opt-in auto.
+- `/ask Aldric, pausa stadsplaneringen.` - disable auto.
+
+Important validation:
+- MineColonies MANAGE_HUTS is required to create work orders.
+- Prevent duplicate Residence orders; if a Residence order is already in
+  progress or waiting, he reports that instead of creating a second one.
+- Only real, registered MineColonies Residence hut sites with valid existing
+  schematic names and level requirements are candidates.
+- No removal, arbitrary commands, arbitrary locations, or custom block edits.
+- A result is reported as a newly created order ONLY if its new ID is found
+  in MineColonies' actual work order registry afterward.
+- Newly placed residential huts and road/path layouts are NOT yet possible;
+  those need a separately validated Structurize blueprint placement adapter.
+- The original Lakeside had 4/4 citizens and a pending/assigned Residence
+  order #11, so expect the initial command to report that construction is
+  already queued. It is correct to do nothing until that order completes.
+
+Java intent self-test:
+    cd /d C:\Users\johan\AI-Kingdom
+    mkdir build-test
+    javac -encoding UTF-8 -d build-test common\src\main\java\com\aibots\common\ai\ColonyDevelopmentIntent.java common\src\test\java\com\aibots\common\ai\ColonyDevelopmentIntentSelfTest.java
+    java -cp build-test com.aibots.common.ai.ColonyDevelopmentIntentSelfTest
+
+Expected: 12 city development intent tests passed.
+
+Game test in a COPY of the world:
+    git pull --ff-only
+    cd forge
+    gradlew.bat clean build
+
+Install the new JAR only if build succeeded. Then select Aldric,
+run `/aibots colony status`, `/aibots colony develop`,
+`/aibots colony auto on`, and `/aibots colony auto off`. Compare actual
+work-order changes with MineColonies Town Hall GUI.
+
+Do NOT assume this prototype constitutes unrestricted city construction.
