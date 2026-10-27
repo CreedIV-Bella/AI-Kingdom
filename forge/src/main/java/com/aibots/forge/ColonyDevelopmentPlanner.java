@@ -205,9 +205,14 @@ public final class ColonyDevelopmentPlanner {
         Object permissions = invoke(colony, "getPermissions");
         Class<?> actionType = Class.forName(
                 "com.minecolonies.api.colony.permissions.Action");
-        @SuppressWarnings("unchecked")
-        Class<? extends Enum> enumType = (Class<? extends Enum>) actionType.asSubclass(Enum.class);
-        Object action = Enum.valueOf(enumType, "MANAGE_HUTS");
+        Object action = null;
+        for (Object value : actionType.getEnumConstants()) {
+            if ("MANAGE_HUTS".equals(((Enum<?>) value).name())) {
+                action = value;
+                break;
+            }
+        }
+        if (action == null) return false;
         return Boolean.TRUE.equals(
                 permissions.getClass().getMethod(
                         "hasPermission", Player.class, actionType)
