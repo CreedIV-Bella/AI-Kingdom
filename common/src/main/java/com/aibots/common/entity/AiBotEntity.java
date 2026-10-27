@@ -275,7 +275,7 @@ public class AiBotEntity extends PathfinderMob {
     }
 
     private void appendDialogue(String who, String content) {
-        String clean = content.replace('\\n', ' ').replace('\\r', ' ').strip();
+        String clean = content.replace('\n', ' ').replace('\r', ' ').strip();
         if (clean.length() > MAX_LINE_LENGTH) {
             clean = clean.substring(0, MAX_LINE_LENGTH);
         }
@@ -290,12 +290,12 @@ public class AiBotEntity extends PathfinderMob {
             return current;
         }
         StringBuilder prompt = new StringBuilder();
-        prompt.append("TIDIGARE SAMTAL (endast konversationsminne, INTE verifierade speldata).\\n");
+        prompt.append("TIDIGARE SAMTAL (endast konversationsminne, INTE verifierade speldata).\n");
         for (String line : dialogue) {
-            prompt.append(line).append('\\n');
+            prompt.append(line).append('\n');
         }
-        prompt.append("SLUT PÅ TIDIGARE SAMTAL.\\n")
-                .append("Svara på senaste frågan och håll samma personlighet.\\n")
+        prompt.append("SLUT PÅ TIDIGARE SAMTAL.\n")
+                .append("Svara på senaste frågan och håll samma personlighet.\n")
                 .append("SENASTE FRÅGA: ").append(current);
         return prompt.toString();
     }
