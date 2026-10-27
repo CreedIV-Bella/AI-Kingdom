@@ -263,6 +263,12 @@ public final class ModNetwork {
         String system;
         if (target != null) {
             prefix = "<" + target.botName() + "> ";
+            String executed = NpcIntentExecutor.tryExecute(player, target, message);
+            if (executed != null) {
+                callback.accept(prefix, executed);
+                speakNpc(player, target, executed);
+                return;
+            }
             String identityReply = target.verifiedReply(message);
             if (identityReply != null) {
                 callback.accept(prefix, identityReply);
