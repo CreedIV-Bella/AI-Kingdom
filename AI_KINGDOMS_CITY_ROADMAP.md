@@ -148,3 +148,44 @@ concurrent Builders' actual capabilities.
 - https://minecolonies.com/wiki/items/sceptersteel/
 - https://www.curseforge.com/minecraft/mc-mods/createcolonies
 - https://www.curseforge.com/minecraft/mc-mods/createcolonies/files/7134076
+
+## 2026-10-27 voice + conversation milestone
+
+The new voice work (still awaiting the user's Minecraft test):
+- `voice/setup_tts.py` installs the Swedish Piper **nst-medium** voice from
+  the public voice repository; see `voice/TTS_README.md`.
+- `voice/test_tts.py` generates and plays Aldric's first Swedish sentence.
+- `voice/tts_swedish.py` reads actual NPC server replies through the client
+  voice outbox; text is synthesized into WAV by Piper, then played by Windows.
+  All speech is local (not a clone of an actor or celebrity).
+- Per-NPC last six chat exchanges stored in entity NBT and sent as bounded
+  context during future Gemma calls. This is *dialogue* context, not verified
+  Minecraft world state. No unlimited permanent life-memory yet.
+- `NpcNaturalIntent` and `NpcIntentExecutor` turn polite, natural Swedish
+  requests (including 'Aldric, vill du vara så snäll och följa med mig?')
+  into explicitly whitelisted commands FOLLOW/STAY/WANDER/INSPECT.
+  Other chat remains conversation. The LLM cannot invent arbitrary commands.
+- `/aibots colony probe` reports detected MineColonies, Structurize and
+  Create versions. This is read-only diagnosis, *not* autonomous building yet.
+
+### Next MineColonies integration implementation (after voice test)
+
+1. Run `/aibots colony probe` and match the actual installed 1.20.1
+   Forge MineColonies API dependencies.
+2. Implement `MineColoniesSnapshot`: colony ID, bounds, citizen count,
+   active Builders, actual assignments/work-order IDs, town hall, builder huts,
+   delivery requests. Server read-only, version-pinned APIs.
+3. Add `/aibots colony status` and natural 'Hur går det med vår stad?'
+   that reads ONLY snapshot facts.
+4. Implement city proposal type:
+   blueprint, placement, plan and materials, validation and optional
+   user approval. No free-form block edits.
+5. Add a real queued work-order adapter for one test blueprint (a small
+   decorative watchtower), including worker status until finished.
+6. Then let Aldric wander/inspect while updating plans in the small village.
+   Only after reliable job completion and budget checks should the player
+   enable automatic placement for small buildings; later for modular castles.
+
+Compatibility warning: the modpack 'MineColonies – Create & Conquer' has
+multiple released versions for 1.20.1, and newer versions may have additional
+logistics add-ons. Never assume a particular installed MineColonies build.
