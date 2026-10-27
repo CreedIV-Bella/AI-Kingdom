@@ -1,48 +1,90 @@
-# AI Kingdoms – experimental Swedish voice input (Windows)
+# AI Kingdoms – lokal svensk röststyrning på Windows
 
-**Status: proof of concept, not a native Minecraft voice mod.**
-This runs alongside Minecraft, not inside Ollama. Audio is transcribed
-locally and converted into existing `/ask` / `/aibots` commands.
+## Vad är nytt?
 
-## Setup
+Den gamla prototypen tryckte tangentbordsknappar för att öppna chatten.
+I ett modpack kan tangenterna betyda något helt annat (t.ex. öppna inventory),
+så Python skrev "Skickat" trots att Minecraft inte fick något kommando.
 
-Use a Windows Python 3.11 or 3.12 installation (not WSL). Open Windows PowerShell
-at this repository's root and run:
+Den nya prototypen använder **ingen tangentbordssimulering för Minecraft-chatten**.
+Whisper transkriberar tal till text, skriver ett tidsstämplat kommando atomiskt
+till `%USERPROFILE%\AI-Kingdoms\voice-command.txt`, och Forge-klienten
+läser kommandot och skickar det genom Minecrafts vanliga klientanslutning.
+Endast en begränsad mängd `/aibots`-kommandon och `/ask` är tillåtna.
 
-```powershell
-py -3.12 -m venv voice\.venv
-voice\.venv\Scripts\python.exe -m pip install -r voice\requirements.txt
-voice\.venv\Scripts\python.exe voice\voice_to_minecraft.py
-```
+OBS: Python-programmet och **nybyggd Java-JAR behövs samtidigt**.
 
-If Python 3.12 isn't installed, install it or use a supported existing Python
-version (for example, change the `py -3.12` argument). Install a microphone.
-The first run downloads a multilingual faster-whisper base model. Subsequent
-recognition can run offline. The model uses CPU so the GPU can serve Minecraft
-and Ollama.
+## Steg för steg
 
-1. Start Minecraft, select an NPC by right-clicking on them, and **close chat**.
-2. Leave the separate Python window running, focus the Minecraft game window.
-3. Press **F9**; speak Swedish for up to five seconds.
-4. The script pastes the recognized command into Minecraft chat.
-5. To stop the script, press **Ctrl+Shift+F12**.
+1. Avsluta gamla Python-röstprogrammet med `Ctrl+Shift+F12` och stäng Minecraft.
+2. Uppdatera GitHub-grenen och bygg om modden:
 
-Examples:
-- "Följ mig" -> `/aibots follow`
-- "Stanna här" -> `/aibots stay`
-- "Vandra" -> `/aibots wander`
-- "Inspektera byn" -> `/aibots inspect`
-- "Hur många soldater har vi?" -> `/ask Hur många soldater har vi?`
+   ```cmd
+   cd /d C:\Users\johan\AI-Kingdom
+   git pull --ff-only
+   cd forge
+   gradlew.bat clean build
+   ```
 
-**Limitations**
-- No actual audio response from NPCs yet: voice **input** only.
-- This experimental solution relies on simulated keyboard input, the Minecraft
-  window being focused, and chat being closed. Other mods might bind F9.
-- Whisper can mishear commands; check in-game feedback before assuming an order
-  was accepted. Only an exact short list of movement/inspection commands is
-  executed; other phrases are sent as conversation.
-- Can conflict with some hotkey utilities, antivirus policy or fullscreen modes.
-- Speech recognition and inference are local after model download. No microphone
-  recording is saved, but Minecraft chat and its usual logs can retain text.
-- Later versions should use an authenticated local interface and in-game
-  push-to-talk; text-to-speech can use offline Piper with Swedish voice models.
+3. Ersätt gamla test-JAR:en i en kopierad CurseForge-profil med nya
+   `forge\build\libs\aibots-forge-1.0.0.jar`. Ha bara en AI Bots-JAR.
+4. Från projektets rot, i en annan CMD-terminal, starta Python-scriptet
+   (samma virtuella miljö som tidigare kan återanvändas):
+
+   ```cmd
+   cd /d C:\Users\johan\AI-Kingdom
+   voice\.venv\Scripts\python.exe -m pip install -r voice\requirements.txt
+   voice\.venv\Scripts\python.exe voice\voice_to_minecraft.py
+   ```
+
+5. Välj NPC genom att högerklicka. Verifiera manuellt med `/aibots who`.
+6. Stäng Minecraft-chatten. Med spelet i förgrunden trycker du
+   **Ctrl+Alt+V** och pratar i 5 sekunder.
+7. Python visar `Hörde ...` och `Röstkommandot är köat`.
+8. Minecraft-chatten bör sedan visa `Röstorder skickad: ...` och resultatet
+   från `/aibots` eller `/ask`.
+
+**F9 används inte längre.** Om du fortfarande ser `F9` i terminalen
+kör du den gamla Python-processen eller inte den uppdaterade koden.
+
+### Testa följande fraser
+
+| Säg | Skickas |
+| --- | --- |
+| Följ mig | /aibots follow |
+| Följe mig (vanlig Whisper-feltolkning) | /aibots follow |
+| Följa med (vanlig Whisper-feltolkning) | /aibots follow |
+| Stanna här | /aibots stay |
+| Inspektera byn | /aibots inspect |
+| Vem pratar jag med | /aibots who |
+| God morgon, Aldric | /ask God morgon, Aldric |
+
+### Om inget händer
+
+- Om Python loggar `Hörde:` men Minecraft inte visar `Röstorder skickad`,
+  dubbelkolla att **nya JAR:en** är installerad. Den gamla JAR:en läser inte röstfilen.
+- Kontrollera att `%USERPROFILE%\AI-Kingdoms\voice-command.txt` skapas
+  under några ögonblick. Den nya Forge-klienten ska läsa och ta bort filen.
+  Ta inte bort filen medan ett kommando behandlas.
+- Kontrollera att både Python och Minecraft körs under **samma Windows-användare**.
+- Minecraft-chatten måste vara stängd; även andra GUI-fönster ska vara stängda.
+- Om Ctrl+Alt+V används av ett annat program, ändra `HOTKEY` i
+  `voice_to_minecraft.py` och starta om skriptet.
+- Felaktig transkribering är ett annat problem. Du kan testa en större Whisper-modell,
+  men det kostar mer CPU: i CMD kör `set AI_KINGDOMS_WHISPER_MODEL=small`
+  direkt innan du startar Python-programmet.
+- Filerna är lokala, men en annan process under samma Windows-konto kan ändra
+  inbox-filen. Forge godkänner bara säkra, begränsade kommandon; detta är
+  inte ett generellt system för fjärrstyrning.
+
+### Säkerhet och begränsningar
+
+- Röst spelas inte upp: det här är endast **tal till text**.
+- Modellen för taligenkänning laddas ned en gång. Efter det kan transkribering
+  köras lokalt utan internet.
+- Whisper kan höra fel. Minecraft visar vilket kommando den tar emot.
+- Inga inspelningar sparas, men text kan sparas av Minecrafts chattloggar.
+- Minecraft-serverns bekräftelse betyder att kommandot mottogs – det
+  garanterar inte att en vägsökning har lyckats eller att ett arbete är färdigt.
+- Nästa ljuddel är NPC-specifik svensk TTS (t.ex. Piper) efter att vi har
+  verifierat kommandobryggan.
