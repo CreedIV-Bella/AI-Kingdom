@@ -144,3 +144,55 @@ Shut down Minecraft and replace the previous test JAR in the copied CurseForge p
 An experimental Windows script is available in `voice/`. Read `voice/README.md` for optional setup. F9 push-to-talk turns Swedish speech into `/ask` or approved `/aibots` commands locally using faster-whisper. It is **input only**; no spoken NPC response yet. For future voice **output**, plan to use local Piper TTS with Swedish voice packs, choosing voice by persisted NPC identity.
 
 Once the above build and gameplay tests pass, move the verified code out of the draft PR and continue with role-based actions and MineColonies integration.
+
+
+## 2026-10-27 – Lakeside colony status and voice fixes
+
+User verified that the MineColonies server integration correctly found:
+- Lakeside, colony #1, at 331 / 70 / 49.
+- 4 of 4 citizens, 12 registered buildings, 3 builder huts, 3 active builders.
+- 4 registered orders: Warehouse #6, Town Hall #10, Residence #11 assigned;
+  Guard Tower #12 awaiting assignment.
+
+Two problems were observed:
+1. When the selected NPC was lost, /ask warned "Ingen NPC vald" yet
+   forwarded the question to a generic model, yielding an invented job report.
+2. Piper spoke raw status identifiers and Java BlockPos punctuation aloud.
+
+**Fixes committed to the development branch, not yet re-tested in Minecraft:**
+- Fail closed in /ask and the AI GUI when no selected NPC exists. No anonymous
+  LLM fallback now.
+- Add /aibots select Aldric Ravencrest (exact saved NPC name, case insensitive,
+  maximum 32 blocks, loaded entity required; refuses duplicate matches).
+- Add exact speech command "Prata med Aldric" => safe /aibots select
+  Aldric Ravencrest; restricted by the Forge voice command allowlist.
+- voice/tts_swedish.py now uses prepare_speech_text() for **audio only**, while
+  preserving the unmodified detailed original in game chat. It extracts
+  population, registered buildings, builders and registered orders from the
+  server report and speaks a compact Swedish summary. Generic answers are
+  stripped of debug symbols, raw BlockPos and visible work order IDs.
+- voice/test_speech_text.py covers the exact Lakeside report and punctuation
+  handling; voice/smoke_test.py covers spoken selection.
+
+Run Python tests without launching Minecraft:
+
+```cmd
+cd /d C:\Users\johan\AI-Kingdom
+voice\.venv\Scripts\python.exe voice\test_speech_text.py
+voice\.venv\Scripts\python.exe voice\smoke_test.py
+```
+
+Then rebuild JDK17/Forge, replace the game JAR and restart the Python process.
+With Aldric physically near:
+```mcfunction
+/aibots select Aldric Ravencrest
+/aibots who
+/ask Aldric, hur går det med byggarna?
+```
+
+The third line should now be an accurate colony report from Aldric and spoken
+as a succinct sentence with no raw #/[]/{}/ symbols.
+
+Outstanding work: editing MineColonies work orders to auto-construct buildings
+has **not** been implemented. First add a validated work order adapter and
+experiment in a copied world, starting with a small decoration blueprint.
