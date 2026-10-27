@@ -92,6 +92,12 @@ public class AIBotsForge {
         String system;
         if (target != null) {
             prefix = "<" + target.botName() + "> ";
+            String executed = NpcIntentExecutor.tryExecute(player, target, message);
+            if (executed != null) {
+                player.sendSystemMessage(Component.literal(prefix + executed).withStyle(ChatFormatting.WHITE));
+                ModNetwork.speakNpc(player, target, executed);
+                return 1;
+            }
             String identityReply = target.verifiedReply(message);
             if (identityReply != null) {
                 player.sendSystemMessage(Component.literal(prefix + identityReply).withStyle(ChatFormatting.WHITE));
