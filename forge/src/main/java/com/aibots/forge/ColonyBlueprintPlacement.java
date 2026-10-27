@@ -8,6 +8,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Tuple;
@@ -42,7 +43,8 @@ final class ColonyBlueprintPlacement {
 
     record Placement(Object building, String description) {}
     private record Design(Object blueprint, String pack, String path, Block block,
-                          int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {}
+                          int minX, int minY, int minZ, int maxX, int maxY, int maxZ,
+                          Footprint buildFootprint, int buildMinY, int buildMaxY) {}
 
     static Placement place(ServerPlayer player, Object colony, String type, List<Object> buildings, AiBotEntity npc)
             throws ReflectiveOperationException {
@@ -118,7 +120,7 @@ final class ColonyBlueprintPlacement {
         }).thenComparingLong(Long::longValue));
         if (chunks.isEmpty()) return new Placement(null, "Väntar på laddade kolonichunks att undersöka.");
         CompoundTag search = npc.getPersistentData().getCompound("AIKingdomsPlotSearch");
-        String identity = pack + ":" + type + ":" + designs.stream().map(Design::path).toList();
+        String identity = "terrain-v2:" + pack + ":" + type + ":" + designs.stream().map(Design::path).toList();
         if (!identity.equals(search.getString("Identity"))) {
             search = new CompoundTag(); search.putString("Identity", identity);
         }
@@ -129,6 +131,7 @@ final class ColonyBlueprintPlacement {
         boolean pending = task.contains("Anchor");
         Map<String, Integer> reasons = new java.util.LinkedHashMap<>();
         boolean completedPass = false;
+        String firstDetail = "";
         int attempts = pending ? 1 : 24;
         for (int attempt = 0; attempt < attempts; attempt++) {
             Design base;
@@ -158,17 +161,19 @@ final class ColonyBlueprintPlacement {
             }
             Footprint rotated = ColonySearchPattern.rotate(new Footprint(base.minX, base.minZ, base.maxX, base.maxZ), rotation);
             Design design = new Design(base.blueprint, base.pack, base.path, base.block,
-                    rotated.minX(), base.minY, rotated.minZ(), rotated.maxX(), base.maxY, rotated.maxZ());
+                    rotated.minX(), base.minY, rotated.minZ(), rotated.maxX(), base.maxY, rotated.maxZ(),
+                    ColonySearchPattern.rotate(base.buildFootprint, rotation), base.buildMinY, base.buildMaxY);
             Footprint footprint = new Footprint(anchor.getX() + design.minX, anchor.getZ() + design.minZ,
                     anchor.getX() + design.maxX, anchor.getZ() + design.maxZ);
             String rejection = occupied.stream().anyMatch(f -> f.overlaps(footprint, 3)) ? "annan byggnad" :
-                    siteProblem(world, colony, anchor, design, footprint);
+                    siteProblem(world, colony, anchor, design);
             if (rejection != null) {
                 if (pending) {
                     ColonyStewardController.cancelVisit(npc);
                     return new Placement(null, "Tomten är inte längre lämplig (" + rejection + "). Jag fortsätter söka.");
                 }
-                count(reasons, rejection); continue;
+                if (firstDetail.isEmpty()) firstDetail = design.path + " vid " + anchor.toShortString() + ": " + rejection;
+                count(reasons, rejection.split(":", 2)[0]); continue;
             }
             if (!pending) {
                 BlockPos approach = ColonyStewardController.approach(world, anchor);
@@ -212,13 +217,20 @@ final class ColonyBlueprintPlacement {
             call(created, "markDirty");
             return new Placement(created, "Registrerade " + type + " vid " + anchor.toShortString());
         }
+        if (!firstDetail.isEmpty() && world.getGameTime() >= search.getLong("NextDiagnostic")) {
+            com.mojang.logging.LogUtils.getLogger().info(
+                    "AI Kingdoms plot search: type={}, checked={}, cycleSize={}, reasons={}, example={}",
+                    type, search.getLong("Checked"), total, reasons, firstDetail);
+            search.putLong("NextDiagnostic", world.getGameTime() + 1200);
+        }
         if (completedPass) {
             CompoundTag deferred = npc.getPersistentData().getCompound("AIKingdomsDeferredBuilds");
             deferred.putLong(type, world.getGameTime() + 1200);
             npc.getPersistentData().put("AIKingdomsDeferredBuilds", deferred);
         }
         return new Placement(null, "Söker vidare efter " + type + ": " + search.getLong("Checked")
-                + " kandidater granskade. Hinder i senaste omgången: " + reasons
+                + " placeringsförsök (inklusive återbesök). Hinder i senaste omgången: " + reasons
+                + (firstDetail.isEmpty() ? "" : ". Exempel: " + firstDetail)
                 + (completedPass ? ". Hela nu laddade området har prövats; jag provar andra behov och återkommer till detta."
                         : ". Jag fortsätter från nästa plats, inte från början."));
     }
@@ -253,6 +265,8 @@ final class ColonyBlueprintPlacement {
                 int maxX = number(blueprint, "getSizeX") - offset.getX() - 1;
                 int maxY = number(blueprint, "getSizeY") - offset.getY() - 1;
                 int maxZ = number(blueprint, "getSizeZ") - offset.getZ() - 1;
+                Footprint buildFootprint = new Footprint(minX, minZ, maxX, maxZ);
+                int buildMinY = minY, buildMaxY = maxY;
                 String name = file.getFileName().toString();
                 for (int level = 2; level <= 5; level++) {
                     Path upgradedFile = file.resolveSibling(name.replaceFirst("1\\.blueprint$", level + ".blueprint"));
@@ -267,7 +281,8 @@ final class ColonyBlueprintPlacement {
                 }
                 if (maxX - minX > 63 || maxZ - minZ > 63 || maxY - minY > 63) continue;
                 result.add(new Design(blueprint, pack, root.relativize(file).toString().replace('\\', '/'),
-                        state.getBlock(), minX, minY, minZ, maxX, maxY, maxZ));
+                        state.getBlock(), minX, minY, minZ, maxX, maxY, maxZ,
+                        buildFootprint, buildMinY, buildMaxY));
             }
             result.sort(Comparator.comparingInt(d -> (d.maxX - d.minX + 1) * (d.maxZ - d.minZ + 1)));
             return List.copyOf(result);
@@ -276,9 +291,13 @@ final class ColonyBlueprintPlacement {
         }
     }
 
-    private static String siteProblem(Level world, Object colony, BlockPos anchor, Design d, Footprint f)
+    private static String siteProblem(Level world, Object colony, BlockPos anchor, Design d)
             throws ReflectiveOperationException {
-        int bottom = anchor.getY() + d.minY, top = anchor.getY() + d.maxY;
+        // Terrain for future upgrades must not reject a valid level-1 building.
+        // Their horizontal footprint remains reserved and checked for existing buildings above.
+        Footprint f = new Footprint(anchor.getX() + d.buildFootprint.minX(), anchor.getZ() + d.buildFootprint.minZ(),
+                anchor.getX() + d.buildFootprint.maxX(), anchor.getZ() + d.buildFootprint.maxZ());
+        int bottom = anchor.getY() + d.buildMinY, top = anchor.getY() + d.buildMaxY;
         if (bottom <= world.getMinBuildHeight() || top >= world.getMaxBuildHeight()) return "världens höjdgräns";
         var inColony = colony.getClass().getMethod("isCoordInColony", Level.class, BlockPos.class);
         for (int x = f.minX(); x <= f.maxX(); x++) {
@@ -289,14 +308,16 @@ final class ColonyBlueprintPlacement {
                         || !Boolean.TRUE.equals(inColony.invoke(colony, world, column))) return "utanför kolonin";
                 int surface = groundY(world, x, z);
                 // Builders clear natural terrain within their blueprint. Never invent unsupported foundations.
-                if (surface < bottom || surface > anchor.getY() + 8 || surface >= top) return "för stor höjdskillnad";
+                if (surface < bottom || surface > anchor.getY() + 8 || surface >= top) return "för stor höjdskillnad: mark=" + surface
+                        + ", grund=" + bottom + ", hut=" + anchor.getY() + ", tak=" + top + " vid " + column.toShortString();
                 for (int y = Math.min(bottom, surface - 1); y <= top; y++) {
                     BlockPos p = new BlockPos(x, y, z);
                     BlockState state = world.getBlockState(p);
                     if (state.hasBlockEntity()) return "behållare eller maskin";
                     if (!state.getFluidState().isEmpty()) return "vatten eller lava";
                     if (!natural(state) && !state.is(BlockTags.LEAVES)
-                            && !(state.is(BlockTags.LOGS) && treeLeavesNearby(world, p))) return "byggt eller okänt block";
+                            && !(state.is(BlockTags.LOGS) && treeLeavesNearby(world, p))) return "byggt eller okänt block: "
+                                    + BuiltInRegistries.BLOCK.getKey(state.getBlock()) + " vid " + p.toShortString();
                 }
             }
         }
@@ -328,7 +349,11 @@ final class ColonyBlueprintPlacement {
     }
 
     private static boolean natural(BlockState s) {
-        return s.isAir() || s.is(Blocks.GRASS_BLOCK) || s.is(Blocks.DIRT) || s.is(Blocks.COARSE_DIRT)
+        return s.isAir() || s.canBeReplaced() || s.is(BlockTags.BASE_STONE_OVERWORLD)
+                || s.is(Blocks.CLAY) || s.is(Blocks.MUD) || s.is(Blocks.MUDDY_MANGROVE_ROOTS)
+                || s.is(Blocks.MOSS_BLOCK) || s.is(Blocks.MYCELIUM) || s.is(Blocks.SNOW_BLOCK)
+                || s.is(Blocks.TUFF) || s.is(Blocks.CALCITE) || s.is(Blocks.RED_SAND)
+                || s.is(Blocks.GRASS_BLOCK) || s.is(Blocks.DIRT) || s.is(Blocks.COARSE_DIRT)
                 || s.is(Blocks.ROOTED_DIRT) || s.is(Blocks.PODZOL) || s.is(Blocks.STONE)
                 || s.is(Blocks.GRANITE) || s.is(Blocks.DIORITE) || s.is(Blocks.ANDESITE)
                 || s.is(Blocks.DEEPSLATE) || s.is(Blocks.SAND) || s.is(Blocks.GRAVEL)

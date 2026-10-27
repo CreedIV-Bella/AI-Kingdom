@@ -131,3 +131,11 @@ In a copied world, fill housing with only level-1 builder huts and eligible leve
 ## Full-colony housing priority
 
 When population reaches capacity, residence construction/upgrades join ahead of waiting ordinary work. One extra queue slot is reserved for housing if no residential order already exists. A necessary builder upgrade retains its prerequisite exception. This prevents a full ordinary queue from indefinitely blocking housing; it does not cancel active projects, create residents, provide missing materials, or guarantee a terrain match. Verify with six ordinary queued orders, full housing, and an eligible residence: one residential order may be added, but repeated planning must not keep expanding the queue. If no existing residence can be upgraded, site search still continues for a new residence.
+
+## Placement terrain correction and diagnostics
+
+Level-1 terrain validation now uses level-1 bounds, independently rotated with the blueprint. Future-level horizontal bounds remain reserved against other registered buildings, but terrain within future-only areas no longer rejects the initial hut. Future upgrades still need their own terrain assessment. The natural terrain allowlist now includes replaceable vegetation, overworld base-stone tags, clay, mud, moss, mycelium, snow blocks, tuff, calcite and red sand. Fluids and block entities are checked before this allowlist. Unknown blocks remain rejected.
+
+Search diagnostics record one example blueprint/anchor and the rejected block registry ID and coordinate, or terrain/foundation/anchor/top heights. Server-log diagnostics are throttled to one per minute. Attempt counts explicitly include revisits; they are not unique plots. The search identity changes to restart enumeration under the revised rules.
+
+Game regression: test all four rotations beside (a) terrain that affects only a future upgrade, (b) clay/moss/replaceable plants, (c) a chest, (d) water, and (e) an existing colony building. Initial terrain should accept (a)/(b) when other checks pass, reject (c)/(d)/(e), and only submit an order after the physical visit and revalidation. No successful placement in the user's world has been verified yet. Java parsing passed; full Forge build is still blocked in this environment by Gradle download access.
