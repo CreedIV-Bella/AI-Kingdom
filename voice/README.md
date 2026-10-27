@@ -108,3 +108,21 @@ voice\.venv\Scripts\python.exe voice\voice_to_minecraft.py
 
 Vissa spel använder raw input och kan kringgå global keyboard suppression;
 därför är rätt tangentbindning i modpaketet sista säkerhetsåtgärden.
+
+## Auto-start och Razer Naga (uppdaterat 2026-10-27)
+
+Du behöver inte manuellt öppna flera terminaler varje gång.
+Instruktioner för auto-start av Ollama och Whisper/Piper när Minecraft startas:
+se `voice/AUTOSTART_README.md`.
+
+Engångsinstallation via CMD i projektroten:
+
+```cmd
+git pull --ff-only
+voice\install_autostart.cmd
+```
+
+Razer Synapse: mappa musknapp **11** till Ctrl+Shift+F8 för tal,
+och musknapp **12** till Ctrl+Shift+F9 för att välja Aldric Ravencrest.
+Övriga program lämnas ifred om de redan är igång. Användaren kan
+stänga av autostart genom `voice\uninstall_autostart.cmd`.
