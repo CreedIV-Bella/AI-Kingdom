@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
  */
 public final class NpcNaturalIntent {
 
-    public enum Action { FOLLOW, STAY, WANDER, INSPECT, INSPECT_CREATE }
+    public enum Action { FOLLOW, STAY, WANDER, INSPECT, INSPECT_CREATE, COLONY_STATUS }
 
     private NpcNaturalIntent() {
     }
@@ -25,6 +25,14 @@ public final class NpcNaturalIntent {
                 .replaceAll("\\s+", " ").trim();
 
         if (s.length() > 240) return null;
+        // Read-only questions about the current colony must return real data,
+        // even though they look like ordinary natural-language conversation.
+        if (has(s, "\\b(hur går det med|status för|rapport om|hur mår|hur många)\\b")
+                && has(s, "\\b(byggarna|byggare|builders|byggorden|byggprojekt|"
+                        + "kolonin|koloni|byn|vår stad|invånare|arbetare)\\b")) {
+            return Action.COLONY_STATUS;
+        }
+
         // Explanations, negated commands, quotations and hypothetical questions
         // are conversation requests, not executable movement orders.
         if (has(s, "\\b(hur|varför|vad händer|förklara|beskriv|berätta|lär mig|"
