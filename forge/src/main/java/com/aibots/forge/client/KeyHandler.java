@@ -28,8 +28,11 @@ public final class KeyHandler {
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END && OPEN_AI.consumeClick()) {
-            Minecraft.getInstance().setScreen(new AiBotScreen());
+        if (event.phase == TickEvent.Phase.END) {
+            VoiceCommandInbox.poll(Minecraft.getInstance());
+            if (OPEN_AI.consumeClick()) {
+                Minecraft.getInstance().setScreen(new AiBotScreen());
+            }
         }
     }
 }
