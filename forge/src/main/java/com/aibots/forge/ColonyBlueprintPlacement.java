@@ -4,6 +4,8 @@ import com.aibots.common.ai.ColonyBuildPolicy.Footprint;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.util.Tuple;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -58,7 +60,22 @@ final class ColonyBlueprintPlacement {
                         + ". Automatiken försöker igen; med engångskommandot, kör develop igen om en stund.");
         if (future.isCompletedExceptionally()) {
             CATALOG.remove(key);
-            return new Placement(null, "Ritningskatalogen kunde inte läsas. Kontrollera serverns strukturpaket.");
+            try {
+                future.join();
+            } catch (java.util.concurrent.CompletionException error) {
+                com.mojang.logging.LogUtils.getLogger().error(
+                        "AI Kingdoms blueprint catalog failed: pack={}, type={}, root={}", pack, type, root, error);
+                Throwable cause = error;
+                for (int depth = 0; depth < 16 && cause.getCause() != null && cause.getCause() != cause; depth++) {
+                    cause = cause.getCause();
+                }
+                String detail = cause.getClass().getSimpleName() + ": " + String.valueOf(cause.getMessage());
+                detail = detail.replace('\n', ' ').replace('\r', ' ');
+                if (detail.length() > 220) detail = detail.substring(0, 220);
+                return new Placement(null, "Ritningsläsningen misslyckades för " + type + " i " + pack
+                        + ". Orsak: " + detail + ". Fullständigt fel finns i logs/latest.log.");
+            }
+            return new Placement(null, "Ritningsläsningen avbröts; försök igen.");
         }
         List<Design> designs = future.join();
         if (designs.isEmpty()) return new Placement(null,
@@ -67,9 +84,10 @@ final class ColonyBlueprintPlacement {
         // Reserve the full future footprint of every registered building, including queued ones.
         List<Footprint> occupied = new ArrayList<>();
         for (Object b : buildings) {
-            Object corners = call(b, "getCorners");
-            BlockPos a = (BlockPos) call(corners, "getA");
-            BlockPos z = (BlockPos) call(corners, "getB");
+            // Vanilla methods must be typed calls so Forge can remap them in the release JAR.
+            Tuple<?, ?> corners = (Tuple<?, ?>) call(b, "getCorners");
+            BlockPos a = (BlockPos) corners.getA();
+            BlockPos z = (BlockPos) corners.getB();
             if (a.equals(z)) return new Placement(null,
                     "Väntar på att MineColonies ska läsa befintliga byggnaders ritningsgränser.");
             int minX = Math.min(a.getX(), z.getX()), minZ = Math.min(a.getZ(), z.getZ());
@@ -163,8 +181,9 @@ final class ColonyBlueprintPlacement {
                 Object blueprint = loader.invoke(null, pack, file, true);
                 if (blueprint == null) continue;
                 BlockPos offset = (BlockPos) call(blueprint, "getPrimaryBlockOffset");
-                BlockState state = (BlockState) blueprint.getClass().getMethod("getBlockState", BlockPos.class)
-                        .invoke(blueprint, offset);
+                // Blueprint implements Structurize IFakeLevelBlockGetter, which extends BlockGetter.
+                // Reflection with the literal "getBlockState" fails after Minecraft reobfuscation.
+                BlockState state = ((BlockGetter) blueprint).getBlockState(offset);
                 if (!hutType.isInstance(state.getBlock())
                         || !type.equals(String.valueOf(call(state.getBlock(), "getBlueprintName")))) continue;
                 int minX = -offset.getX(), minY = -offset.getY(), minZ = -offset.getZ();
