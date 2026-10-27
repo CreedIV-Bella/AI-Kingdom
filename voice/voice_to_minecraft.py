@@ -27,6 +27,7 @@ from faster_whisper import WhisperModel
 SAMPLE_RATE = 16000
 SECONDS = 5
 HOTKEY = os.environ.get("AI_KINGDOMS_VOICE_HOTKEY", "ctrl+shift+f8")
+SELECT_HOTKEY = os.environ.get("AI_KINGDOMS_SELECT_HOTKEY", "ctrl+shift+f9")
 EXIT_HOTKEY = "ctrl+shift+f12"
 MAX_CHARS = 320
 MAX_AGE_MS = 15000
@@ -158,18 +159,31 @@ def start_recording() -> None:
     ).start()
 
 
+def select_aldric() -> None:
+    """Optional Naga button 12: target nearby Aldric without a chat command."""
+    if not minecraft_is_focused():
+        print("Minecraft måste vara aktivt för att välja Aldric.")
+        return
+    cmd = "/aibots select Aldric Ravencrest"
+    if queue_command(cmd):
+        print("Väljer Aldric Ravencrest i Minecraft (inom 32 block).")
+
+
 def main() -> None:
     global model
     if sys.platform != "win32":
         raise SystemExit("Den här röstbryggan är avsedd för Windows.")
     print(f"Laddar Whisper {MODEL} (första gången laddas modellen ned)...")
     model = WhisperModel(MODEL, device="cpu", compute_type="int8")
-    print(f"Redo! Fokusera Minecraft och tryck {HOTKEY.upper()} för att tala.")
+    print(f"Redo! {HOTKEY.upper()} = prata, {SELECT_HOTKEY.upper()} = välj Aldric.")
+    print("Razer Naga: mappa sidoknapp 11 till röstgenvägen och 12 till NPC-val.")
     print(f"Köfil: {INBOX}")
     print(f"Avsluta med {EXIT_HOTKEY.upper()} (globalt kortkommando).")
     # On Windows, prevent the hotkey from also activating a game keybind.
     # Some raw-input configurations may still receive it; choose an unused key there.
     keyboard.add_hotkey(HOTKEY, start_recording, suppress=True, trigger_on_release=True)
+    keyboard.add_hotkey(SELECT_HOTKEY, select_aldric,
+                        suppress=True, trigger_on_release=True)
     shutdown = threading.Event()
     speech_worker = threading.Thread(
         target=run_speech_loop, args=(shutdown,), name="ai-kingdoms-tts", daemon=True)
