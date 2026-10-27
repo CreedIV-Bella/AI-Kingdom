@@ -10,6 +10,7 @@ CASES = {
     "Följa med.": "/aibots follow",
     "Följe mig.": "/aibots follow",
     "Följ mig.": "/aibots follow",
+    "Prata med Aldric.": "/aibots select Aldric Ravencrest",
     "Stanna här!": "/aibots stay",
     "Inspektera byn.": "/aibots inspect",
     "Vem pratar jag med?": "/aibots who",
