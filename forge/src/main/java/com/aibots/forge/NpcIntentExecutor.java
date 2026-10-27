@@ -37,6 +37,7 @@ public final class NpcIntentExecutor {
             }
             case INSPECT -> VillageInspection.inspect(bot);
             case INSPECT_CREATE -> CreateInspection.inspect(bot);
+            case COLONY_STATUS -> MineColoniesBridge.status(player, bot);
         };
     }
 }
