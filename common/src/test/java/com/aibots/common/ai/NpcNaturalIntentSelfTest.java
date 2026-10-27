@@ -22,8 +22,11 @@ public final class NpcNaturalIntentSelfTest {
         expect("Vad händer om du följer mig?", null);
         expect("Jag vill prata med dig om vår nya by.", null);
         expect("Gå runt och stanna här", null);
+        expect("Aldric, hur går det med byggarna?", NpcNaturalIntent.Action.COLONY_STATUS);
+        expect("Kan jag få en rapport om vår koloni?", NpcNaturalIntent.Action.COLONY_STATUS);
+        expect("Hur många invånare har vår stad?", NpcNaturalIntent.Action.COLONY_STATUS);
 
-        System.out.println("13 natural-language NPC intent tests passed.");
+        System.out.println("16 natural-language NPC intent tests passed.");
     }
 
     private static void expect(String phrase, NpcNaturalIntent.Action expected) {
