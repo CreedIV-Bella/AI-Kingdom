@@ -237,6 +237,7 @@ public class AIBotsForge {
         if (bot == null) return 0;
         ServerPlayer player = ctx.getSource().getPlayer();
         if (player == null || bot.level() != player.level()) return 0;
+        ColonyStewardController.pause(bot);
         bot.followPlayer(player);
         player.sendSystemMessage(Component.literal(bot.botName() + ": Jag följer dig.")
                 .withStyle(ChatFormatting.GREEN));
@@ -246,6 +247,7 @@ public class AIBotsForge {
     private int stay(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
         AiBotEntity bot = selectedNpc(ctx);
         if (bot == null) return 0;
+        ColonyStewardController.pause(bot);
         bot.stay();
         ctx.getSource().sendSuccess(() ->
                 Component.literal(bot.botName() + " stannar här."), false);
@@ -255,6 +257,7 @@ public class AIBotsForge {
     private int wander(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
         AiBotEntity bot = selectedNpc(ctx);
         if (bot == null) return 0;
+        ColonyStewardController.pause(bot);
         bot.wander();
         ctx.getSource().sendSuccess(() ->
                 Component.literal(bot.botName() + " börjar vandra omkring."), false);
@@ -379,7 +382,7 @@ public class AIBotsForge {
             npc.setStewardEnabled(true, player.getUUID());
             player.sendSystemMessage(Component.literal(
                     npc.botName() + " är nu aktiv stadsförvaltare. "
-                    + "Varannan minut planerar han byggkön när du är i närheten. "
+                    + "Han söker tomter, går på inspektionsrundor och planerar byggkön även när du är långt bort. "
                     + "Han kan placera nya MineColonies-tomter med kolonins ritningar och "
                     + "köa byggprojekt åt Builders utan nya godkännanden.")
                     .withStyle(ChatFormatting.GREEN));
@@ -394,7 +397,7 @@ public class AIBotsForge {
                         "Endast den som slog på stadsförvaltningen får stänga av den."));
                 return 0;
             }
-            npc.setStewardEnabled(false, null);
+            ColonyStewardController.pause(npc);
             player.sendSystemMessage(Component.literal(
                     npc.botName() + " har pausat automatisk stadsplanering.")
                     .withStyle(ChatFormatting.GREEN));
@@ -403,7 +406,7 @@ public class AIBotsForge {
     }
 
     /**
-     * Deliberately infrequent and gated by an online owner near a loaded NPC.
+     * Steward state machine for loaded NPCs with an authorized online owner.
      * No chunks are force-loaded, and no LLM is allowed to mutate the colony.
      */
     @SubscribeEvent
@@ -415,27 +418,20 @@ public class AIBotsForge {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-        if (server == null || server.getTickCount() % 2400 != 0) return;
+        if (server == null || server.getTickCount() % 20 != 0) return;
 
         for (ServerLevel level : server.getAllLevels()) {
             for (var entity : level.getAllEntities()) {
                 if (!(entity instanceof AiBotEntity bot) || !bot.isAlive()
-                        || !bot.isStewardEnabled()) continue;
+                        || (!bot.isStewardEnabled() && !ColonyStewardController.hasTask(bot))) continue;
 
-                ServerPlayer owner = server.getPlayerList().getPlayer(
-                        bot.getStewardOwnerUUID());
-                if (owner == null || owner.level() != bot.level()
-                        || owner.distanceToSqr(bot) > 128.0D * 128.0D) {
-                    continue;
-                }
-                String previousReport = bot.getStewardReport();
-                ColonyDevelopmentPlanner.Result result =
-                        ColonyDevelopmentPlanner.develop(owner, bot);
-                if (result.modified() || !result.description().equals(previousReport)) {
-                    owner.sendSystemMessage(Component.literal(
-                            bot.botName() + " (stadsförvaltare): "
-                            + result.description()).withStyle(ChatFormatting.GREEN));
-                }
+                java.util.UUID ownerId = bot.getStewardOwnerUUID();
+                if (ownerId == null && ColonyStewardController.task(bot).hasUUID("Owner"))
+                    ownerId = ColonyStewardController.task(bot).getUUID("Owner");
+                if (ownerId == null) continue;
+                ServerPlayer owner = server.getPlayerList().getPlayer(ownerId);
+                if (owner == null || owner.level() != bot.level()) continue;
+                ColonyStewardController.tick(owner, bot);
             }
         }
     }
@@ -471,6 +467,7 @@ public class AIBotsForge {
             return 0;
         }
 
+        ColonyStewardController.pause(bot);
         bot.goTo(pos);
         ctx.getSource().sendSuccess(() ->
                 Component.literal(bot.botName() + " går mot " + pos.toShortString()

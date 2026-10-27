@@ -30,8 +30,7 @@ public final class ColonyDevelopmentPlanner {
     }
 
     public static boolean isOwner(ServerPlayer player, AiBotEntity npc) {
-        if (player == null || npc == null || npc.level() != player.level()
-                || npc.distanceToSqr(player) > MAX_DISTANCE_SQ) {
+        if (player == null || npc == null || npc.level() != player.level()) {
             return false;
         }
         try {
@@ -54,9 +53,8 @@ public final class ColonyDevelopmentPlanner {
         if (player == null || npc == null) {
             return new Result(false, "Jag måste prata med en vald NPC.");
         }
-        if (npc.level() != player.level()
-                || npc.distanceToSqr(player) > MAX_DISTANCE_SQ) {
-            return new Result(false, "Du behöver vara nära Aldric i samma dimension.");
+        if (npc.level() != player.level()) {
+            return new Result(false, "Kolonins ägare behöver vara i samma dimension som Aldric.");
         }
         if (!ModList.get().isLoaded("minecolonies")) {
             return new Result(false, "MineColonies är inte laddat.");
@@ -70,6 +68,8 @@ public final class ColonyDevelopmentPlanner {
                 return new Result(false, "Du har inte MineColonies-behörigheten MANAGE_HUTS.");
             }
 
+            npc.getPersistentData().putInt("AIKingdomsColonyId", ((Number) invoke(colony, "getID")).intValue());
+            npc.getPersistentData().putString("AIKingdomsColonyDimension", npc.level().dimension().location().toString());
             Object manager = invoke(colony, "getCitizenManager");
             int residents = ((Number) invoke(manager, "getCurrentCitizenCount")).intValue();
             int capacity = ((Number) invoke(manager, "getMaxCitizens")).intValue();
@@ -108,9 +108,11 @@ public final class ColonyDevelopmentPlanner {
                 }
             }
             int target = com.aibots.common.ai.ColonyBuildPolicy.queueTarget(counts.getOrDefault("builder", 0));
-            if (orders.size() >= target) return new Result(false,
-                    "Byggkön har " + orders.size() + " projekt. Jag fyller på när kön minskar; målet är "
-                            + target + " samtidiga eller väntande projekt.");
+            if (orders.size() >= target) {
+                ColonyStewardController.cancelVisit(npc);
+                return new Result(false, "Byggkön har " + orders.size() + " projekt. Jag besöker byggplatserna och fyller på när kön minskar; målet är "
+                        + target + " samtidiga eller väntande projekt.");
+            }
             final boolean full = residents >= capacity;
             eligible.sort(Comparator.comparingInt((Candidate c) -> {
                 try { return com.aibots.common.ai.ColonyBuildPolicy.priority(buildingType(c.building()), full); }
@@ -127,11 +129,26 @@ public final class ColonyDevelopmentPlanner {
                 queued.add(receipt);
                 if (type.equals("residence")) residencePending = true;
             }
-            String next = com.aibots.common.ai.ColonyBuildPolicy.nextMissing(residents, capacity, counts, residencePending);
+            Map<String, Integer> planningCounts = new java.util.HashMap<>(counts);
+            var deferred = npc.getPersistentData().getCompound("AIKingdomsDeferredBuilds");
+            boolean housingDeferred = false;
+            boolean anyDeferred = false;
+            for (String type : deferred.getAllKeys()) {
+                if (deferred.getLong(type) <= npc.level().getGameTime()) continue;
+                planningCounts.putIfAbsent(type, 1);
+                if (type.equals("residence")) housingDeferred = true;
+                anyDeferred = true;
+            }
+            String next = com.aibots.common.ai.ColonyBuildPolicy.nextMissing(residents, capacity, planningCounts,
+                    residencePending || housingDeferred);
+            if (ColonyStewardController.hasTask(npc)
+                    && !java.util.Objects.equals(next, ColonyStewardController.task(npc).getString("Type"))) {
+                ColonyStewardController.cancelVisit(npc);
+            }
             String nextReport = "";
             if (((Map<?, ?>) invoke(work, "getWorkOrders")).size() < target && next != null) {
                 ColonyBlueprintPlacement.Placement placement =
-                        ColonyBlueprintPlacement.place(player, colony, next, allBuildings);
+                        ColonyBlueprintPlacement.place(player, colony, next, allBuildings, npc);
                 nextReport = placement.description();
                 if (placement.building() != null) {
                     String receipt = queue(player, colony, work, placement.building());
@@ -146,7 +163,8 @@ public final class ColonyDevelopmentPlanner {
                     + " andra byggförsök; kontrollera forskningskrav och byggarnas nivå/avstånd.";
             if (!nextReport.isEmpty()) report += " " + nextReport;
             if (queued.isEmpty() && next == null && rejected == 0) report +=
-                    " Grundfunktionerna finns redan eller är planerade. Jag bevakar bostadsbehov och byggkö.";
+                    anyDeferred ? " Några tomtsökningar behöver ett nytt försök. Jag besöker byggplatser och försöker igen inom en minut."
+                            : " Grundfunktionerna finns redan eller är planerade. Jag bevakar bostadsbehov och byggkö.";
             return new Result(!queued.isEmpty(), report);
 
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
@@ -227,12 +245,17 @@ public final class ColonyDevelopmentPlanner {
                         .invoke(permissions, player, action));
     }
 
-    private static Object nearbyColony(ServerPlayer player, AiBotEntity npc)
+    static Object nearbyColony(ServerPlayer player, AiBotEntity npc)
             throws ReflectiveOperationException {
         Level world = player.serverLevel();
         BlockPos location = npc.blockPosition();
         Class<?> managerType = Class.forName("com.minecolonies.api.colony.IColonyManager");
         Object manager = managerType.getMethod("getInstance").invoke(null);
+        if (npc.getPersistentData().contains("AIKingdomsColonyId")) {
+            if (!world.dimension().location().toString().equals(npc.getPersistentData().getString("AIKingdomsColonyDimension"))) return null;
+            return managerType.getMethod("getColonyByWorld", int.class, Level.class)
+                    .invoke(manager, npc.getPersistentData().getInt("AIKingdomsColonyId"), world);
+        }
         Object colony = managerType.getMethod(
                 "getColonyByPosFromWorld", Level.class, BlockPos.class)
                 .invoke(manager, world, location);

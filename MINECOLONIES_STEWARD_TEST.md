@@ -3,55 +3,63 @@
 Status 2026-10-27: implementation on the development branch, **not yet Forge-compiled or game-tested**.
 This document supersedes the housing-only status in older development notes.
 
-## Behavior
+## Behavior (updated: continued search and walking steward)
 
-Aldric uses the server's real colony/building/work-order records. Owner-enabled autonomy does
-not ask for approval per building. Decisions are deterministic rules, not an LLM city planner.
+The owner grants ongoing building authority with `colony auto on`. The planner reads actual
+MineColonies records and queues existing buildings or missing essentials. It does not require
+per-building approval. Decisions remain deterministic, not free-form LLM planning.
 
-- Queue unfinished, registered MineColonies buildings, with housing/builders/logistics first.
-- Request housing upgrades when citizen capacity is full.
-- An existing housing order prevents another housing expansion, but does not block other work.
-- Discover missing essentials: Builder, Residence when needed, Warehouse, Courier
-  (`deliveryman`), Restaurant (`cook`), Forester (`lumberjack`), Mine, Farm.
-- Use the most common existing structure pack, discover matching level-1 blueprints on the
-  server and verify their actual MineColonies hut anchors. This first catalog recognizes
-  conventional filenames plus restaurant/courier/forester aliases.
-- Place one new plot per planning cycle through MineColonies' `SurvivalHandler.handle`, then
-  request BUILD via `requestUpgrade(player, BlockPos.ZERO)`. Builders perform construction;
-  there is no instant structure paste or resource spawning.
-- Keep a rolling queue of `clamp(2 * registered Builder huts, 3, 12)` total work orders.
-  Three Builder huts means a target of six active/waiting projects. Existing orders count.
-- New orders go behind existing orders and receive decreasing priorities. Builders choose
-  feasible work according to MineColonies; priority is not a guarantee of strict FIFO.
-- Confirm new order IDs at the intended location before reporting queued construction.
-- If placement succeeds but ordering fails, report a registered plot without a build order.
-  The next cycle retries that plot instead of creating another copy.
-- Autonomy runs every 2400 ticks (about two minutes at 20 TPS), while the owner is online,
-  within 128 blocks and in the same dimension as the loaded NPC. Changed explanations also
-  appear in chat; `/aibots colony status` includes the latest planning report for this session.
+- Existing unfinished buildings can enter the queue; housing upgrades depend on full capacity.
+- Missing essentials: Builder, needed Residence, Warehouse, Courier, Restaurant, Forester, Mine, Farm.
+- New plots reuse the colony's existing server structure pack and normal survival placement handler.
+- Queue target remains twice the registered Builder huts, clamped to 3–12 active/waiting orders.
+- New order IDs must be verified; plot registration and actual work-order creation are separate results.
 
-## Placement constraints in this first implementation
+### Search
 
-The search uses an unrotated grid 16–80 blocks from the colony center, rotating search sectors
-between cycles. It only scans loaded colony land and checks the whole discovered footprint.
-It rejects fluids, block entities, non-natural blocks and terrain varying by more than two
-blocks. It leaves at least three blocks between registered footprints. New plots record a
-persistent footprint covering available levels 1–5 in their hut block entity, so later placement
-can leave room for upgrades. MineColonies maintains its own building geometry separately.
+The old 16–80 block ring search is replaced by a four-block grid over the colony's **loaded chunks**.
+Each cell tries every discovered design and all four rotations. The NPC stores its cursor and
+candidate count in Forge entity persistent data. Each planning pass checks up to 24 candidates,
+then resumes from the following candidate rather than restarting the same small sample.
+Changing the blueprint catalog resets the cursor; changes in the loaded chunk list can revisit
+some locations. A completed pass defers that building need for a minute so other needs can be
+tried. Hinder counts distinguish overlap, unloaded land, colony border, elevation, fluids,
+block entities, unfamiliar blocks and inaccessible standing spots.
 
-Only designs up to 64 blocks on each axis are considered. Disk reads and blueprint decoding
-run asynchronously; an initial `Läser ... ritningar` response is expected. With manual
-`develop`, run it again after loading; with `auto on`, the next cycle retries automatically.
-An unavailable/unknown existing building footprint can block placement rather than inventing
-its bounds. The algorithm cannot distinguish player-built natural stone/dirt from terrain;
-use the copied test world first. Road planning and arbitrary city-wide LLM decisions are not
-implemented. Farmer buildings still need the normal fields/workers setup; this does not assign
-citizens or resolve every supply/research dependency.
+The checks reserve discovered upgrade footprints, including rotation. Trees with a nearby canopy
+and leaves can be accepted for Builder clearance. A natural-terrain rise of up to eight blocks
+can be accepted within the blueprint; unsupported foundations, fluids, registered building
+footprints and block entities remain rejected. This does NOT terraform land itself, guarantee
+that any terrain is buildable, or establish ownership of player-placed natural blocks/logs.
+Actual clearing and foundation work still depend on the selected blueprint and MineColonies.
+
+### Physical work cycle
+
+1. Search and choose a candidate.
+2. Save a visit task and walk to a clear standing spot near it.
+3. On physical arrival, stop for a three-second inspection.
+4. Recheck the plot, current need, queue and permissions, then place the hut and request the order.
+5. While continuing planning, patrol existing construction sites (or registered buildings).
+
+Long travel uses local waypoints. Doors can be opened. Lack of movement and repeated navigation
+failures end the route; an inspection that cannot be reached is abandoned and search continues.
+This is real Minecraft navigation, not teleportation. It cannot solve every terrain/path obstacle,
+clear a walking route by itself, assign workers or resolve all material/research dependencies.
+Builders still perform the actual house construction. Roads are not implemented here.
+
+Planning checks run about every five seconds; inspection/movement is checked every second.
+Chat reports are throttled, while `/aibots colony status` includes movement and latest planning.
+Saved visits/search cursors resume after world reload. `auto off`, explicit follow/stay/wander,
+and explicit go orders cancel the visit and pause autonomous work so the manual order wins.
+
+**The owner-to-Aldric 128-block distance gate is removed.** The owner must still be online in the
+same dimension and the NPC/terrain must be loaded. No chunks are force-loaded. Initial colony
+binding happens near the colony; thereafter the saved colony ID/dimension determines his scope.
+Moving to another colony does not silently grant control over it.
 
 Survival needs the appropriate ordinary hut item in the owner's inventory. Creative needs no
-hut item. Moved/prebuilt hut items with NBT are rejected before calling the handler, avoiding
-its special restored-building/instant-paste branch. Normal MineColonies permissions, builder
-levels, distance, research gates and material supply still apply.
+hut item. Moved/prebuilt hut items with NBT are rejected. Normal MineColonies permissions,
+Builder levels, distance, research gates and material supply remain active.
 
 ## Build and install (Windows CMD)
 
@@ -75,8 +83,7 @@ Test on a copy of the complete world because `develop` now places actual hut blo
 
 ## Game test
 
-1. Stand near Aldric in Lakeside; keep the Town Hall/build area loaded.
-2. Run:
+1. In a copied world, stand near Aldric and run:
 
 ```mcfunction
 /aibots select Aldric Ravencrest
@@ -85,28 +92,32 @@ Test on a copy of the complete world because `develop` now places actual hut blo
 /aibots colony auto on
 ```
 
-Equivalent spoken instruction: **Aldric, bygg ut staden självständigt, du får bestämma.**
-Autonomy stays enabled over world reloads; the owner must remain online and nearby.
+Spoken activation: **Aldric, bygg ut staden självständigt, du får bestämma.**
 
-3. Check Town Hall's work-order list. Compare the IDs before/after; existing Residence #11
-   must not produce a duplicate, and it must not prevent an unrelated project entering the queue.
-4. If the blueprint catalog is loading, wait for the next automatic cycle or run
-   `/aibots colony develop` to retry sooner. Check the latest explanation with `colony status`.
-5. For new plots, verify the hut block, correct style, gap to neighbours and real work-order ID.
-   Let a Builder finish one project and verify the queue can refill later.
-6. Repeat `develop` and save/reload: no second plot/order for the same pending requirement.
-7. Verify missing hut item, missing research, insufficient Builder level, terrain obstruction and
-   full queue yield explanations rather than false completion reports.
-8. Pause with `/aibots colony auto off` or **Aldric, pausa stadsplaneringen.**
+2. Expect continuing search counts and obstacle reasons. During search he should visit actual
+   registered construction sites rather than remain in STAY mode indefinitely.
+3. Once a suitable plot is found, expect a physical walk and an inspection. No new plot should
+   appear until he reaches the inspection spot and the site is revalidated.
+4. Confirm the hut's rotation/style, footprint gaps and the real order ID in Town Hall.
+5. Block a route: the NPC should report failure and continue searching, not claim successful inspection.
+6. Walk more than 128 blocks away while keeping the NPC/colony loaded. Work should continue.
+   Unloading the NPC is a different condition and pauses its simulation normally.
+7. Save/reload during search and during a visit. Verify continued progress and no duplicate plots/orders.
+8. Issue follow/stay or `auto off` during a visit: movement/work must obey the manual order and no
+   delayed placement may occur. `auto on` explicitly resumes autonomous work.
+9. Existing Residence #11 must not duplicate or block unrelated queued projects. Let a Builder
+   complete a job, then check queue refill. Missing hut items/research must not produce false success.
 
 ## Validation performed here
 
-- 70 dependency-free Java assertions passed: build policy (10), development intents (12),
-  priority intents (12), natural intents (16), world-fact guard (20).
-- JDK 17 parser accepted all 37 common/Forge Java files (syntax only, not type checking).
-- Reflection contracts inspected against source tags:
-  `ldtteam/minecolonies v1.20.1-1.1.1278-snapshot` and
-  `ldtteam/Structurize v1.20.1-1.0.818`.
-- Full Gradle/Forge compilation was attempted but blocked before compilation by
+- The existing 70 dependency-free Java assertions passed.
+- Search regression verifies 384 unique cell/design/rotation combinations across resumed batches,
+  bounds and asymmetric footprint rotation.
+- Eight visit lifecycle cases passed, including arrival, inspection delay, displacement and timeout.
+- JDK 17 parser accepted all 42 common/Forge Java files (syntax only, not type checking).
+- New integration contracts inspected against MineColonies v1.20.1-1.1.1278-snapshot
+  (`getLoadedChunks`, `getColonyByWorld`) and Structurize v1.20.1-1.0.818 (absolute rotation).
+- Full Gradle/Forge compilation remains blocked here by the previously observed
   `UnknownHostException: services.gradle.org` while downloading Gradle 8.1.1.
-- No Minecraft session or live colony was modified from this environment.
+- The earlier screenshot confirmed blueprint loading reaches site search; **this walking/search
+  update has not yet been Forge-compiled or tested in Minecraft**.

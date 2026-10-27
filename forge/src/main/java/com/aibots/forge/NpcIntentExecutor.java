@@ -37,7 +37,7 @@ public final class NpcIntentExecutor {
                     && !bot.getStewardOwnerUUID().equals(player.getUUID())) {
                 return "Endast min ursprungliga uppdragsgivare kan pausa mitt stadsansvar.";
             }
-            bot.setStewardEnabled(false, null);
+            ColonyStewardController.pause(bot);
             return "Självständig stadsplanering är pausad.";
         }
 
@@ -53,14 +53,17 @@ public final class NpcIntentExecutor {
 
         return switch (action) {
             case FOLLOW -> {
+                ColonyStewardController.pause(bot);
                 bot.followPlayer(player);
                 yield "Ja, jag följer med dig.";
             }
             case STAY -> {
+                ColonyStewardController.pause(bot);
                 bot.stay();
                 yield "Självklart, jag stannar här.";
             }
             case WANDER -> {
+                ColonyStewardController.pause(bot);
                 bot.wander();
                 yield "Jag tar en promenad och håller mig i närheten.";
             }

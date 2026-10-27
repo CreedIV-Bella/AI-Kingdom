@@ -92,6 +92,9 @@ public class AiBotEntity extends PathfinderMob {
 
     public AiBotEntity(EntityType<? extends AiBotEntity> type, Level level) {
         super(type, level);
+        if (getNavigation() instanceof net.minecraft.world.entity.ai.navigation.GroundPathNavigation ground) {
+            ground.setCanOpenDoors(true);
+        }
     }
 
     /** Preserve callers' ability to customize a particular NPC's personality. */
@@ -111,6 +114,7 @@ public class AiBotEntity extends PathfinderMob {
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
         goalSelector.addGoal(1, new KingdomTravelGoal(this));
+        goalSelector.addGoal(2, new net.minecraft.world.entity.ai.goal.OpenDoorGoal(this, true));
         goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 0.8D) {
             @Override
             public boolean canUse() {
