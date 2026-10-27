@@ -106,9 +106,13 @@ public class AIBotsForge {
                     .withStyle(ChatFormatting.YELLOW));
         }
 
+        String contextualMessage = target != null ? target.messageWithHistory(message) : message;
         player.sendSystemMessage(Component.literal(prefix + "Thinking...").withStyle(ChatFormatting.GRAY));
-        AiService.ask(system, message).thenAccept(reply -> {
+        AiService.ask(system, contextualMessage).thenAccept(reply -> {
             player.server.execute(() -> {
+                if (target != null && target.isAlive()) {
+                    target.rememberExchange(message, reply);
+                }
                 player.sendSystemMessage(Component.literal(prefix + reply).withStyle(ChatFormatting.WHITE));
                 ModNetwork.speakNpc(player, target, reply);
             });
