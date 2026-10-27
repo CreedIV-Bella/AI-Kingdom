@@ -239,14 +239,16 @@ public final class MineColoniesBridge {
             }
 
             int highest = Integer.MIN_VALUE;
+            int highestOther = Integer.MIN_VALUE;
             for (Object order : orders.values()) {
                 if (order == null) continue;
                 int priority = ((Number) call(order, "getPriority")).intValue();
                 highest = Math.max(highest, priority);
+                if (order != chosen) highestOther = Math.max(highestOther, priority);
             }
             int original = ((Number) call(chosen, "getPriority")).intValue();
-            if (original >= highest) {
-                return "Order " + orderId + " har redan högst prioritet.";
+            if (original > highestOther) {
+                return "Order " + orderId + " har redan ensam högst prioritet.";
             }
             if (highest >= 100000) {
                 return "Arbetskön har för höga prioritetstal för en säker ändring.";
