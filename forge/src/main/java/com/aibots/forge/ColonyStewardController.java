@@ -65,7 +65,7 @@ final class ColonyStewardController {
                 case RETRY -> {
                     cancelVisit(npc);
                     npc.setStewardReport("Kom inte fram till tomten. Jag söker en annan plats.");
-                    owner.sendSystemMessage(Component.literal(npc.botName() + ": " + npc.getStewardReport()));
+                    report(owner, npc, npc.getStewardReport(), now, false);
                     state.putLong("AIKingdomsNextPlan", now + 100);
                 }
                 case WALK -> { }
@@ -82,14 +82,20 @@ final class ColonyStewardController {
     }
 
     private static void plan(ServerPlayer owner, AiBotEntity npc, long now) {
-        boolean wasVisiting = hasTask(npc);
         ColonyDevelopmentPlanner.Result result = ColonyDevelopmentPlanner.develop(owner, npc);
         CompoundTag state = npc.getPersistentData();
         state.putLong("AIKingdomsNextPlan", now + 100);
-        if (result.modified() || wasVisiting != hasTask(npc) || now >= state.getLong("AIKingdomsNextReport")) {
-            owner.sendSystemMessage(Component.literal(npc.botName() + ": " + result.description()));
-            state.putLong("AIKingdomsNextReport", now + 1200);
-        }
+        report(owner, npc, result.description(), now, result.modified());
+    }
+
+    private static void report(ServerPlayer owner, AiBotEntity npc, String message, long now, boolean changedWorld) {
+        CompoundTag state = npc.getPersistentData();
+        // Status remains available on demand. Repeated idle/blocker messages need no heartbeat in chat.
+        if (!com.aibots.common.ai.StewardReportingPolicy.shouldReport(message,
+                state.getString("AIKingdomsLastReport"), now, state.getLong("AIKingdomsNextReport"), changedWorld)) return;
+        owner.sendSystemMessage(Component.literal(npc.botName() + ": " + message));
+        state.putString("AIKingdomsLastReport", message);
+        state.putLong("AIKingdomsNextReport", now + 1200);
     }
 
     private static void patrol(ServerPlayer owner, AiBotEntity npc) {

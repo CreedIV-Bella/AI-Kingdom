@@ -107,8 +107,40 @@ public final class ColonyDevelopmentPlanner {
                     eligible.add(new Candidate(building, position, currentLevel, maxLevel));
                 }
             }
+            // A blocked housing/project upgrade needs builder capacity before more retries.
+            int requiredBuilderLevel = 0;
+            for (Candidate candidate : eligible) {
+                if (builderProblem(colony, candidate.building()).equals("nivå"))
+                    requiredBuilderLevel = Math.max(requiredBuilderLevel, candidate.level() + 1);
+            }
+            boolean builderUpgradePending = false;
+            for (Object building : allBuildings) {
+                if (buildingType(building).equals("builder") && occupiedWorkSites.contains(invoke(building, "getPosition")))
+                    builderUpgradePending = true;
+            }
+            Object prerequisite = null;
+            int bestBuilderLevel = -1;
+            for (Object building : allBuildings) {
+                if (builderUpgradePending || !buildingType(building).equals("builder")) continue;
+                int level = ((Number) invoke(building, "getBuildingLevel")).intValue();
+                if (level >= requiredBuilderLevel || level >= ((Number) invoke(building, "getMaxBuildingLevel")).intValue()
+                        || level <= bestBuilderLevel || occupiedWorkSites.contains(invoke(building, "getPosition"))
+                        || ((java.util.Collection<?>) invoke(building, "getAllAssignedCitizen")).isEmpty()) continue;
+                String blueprint = String.valueOf(invoke(building, "getBlueprintPath"));
+                String pack = String.valueOf(invoke(building, "getStructurePack"));
+                if (blueprint.isBlank() || blueprint.equals("null") || pack.isBlank() || pack.equals("null")) continue;
+                if (!builderProblem(colony, building).isEmpty()) continue;
+                prerequisite = building;
+                bestBuilderLevel = level;
+            }
+            if (prerequisite != null) {
+                Object selected = prerequisite;
+                eligible.removeIf(candidate -> candidate.building() == selected);
+                eligible.add(new Candidate(prerequisite, (BlockPos) invoke(prerequisite, "getPosition"),
+                        bestBuilderLevel, ((Number) invoke(prerequisite, "getMaxBuildingLevel")).intValue()));
+            }
             int target = com.aibots.common.ai.ColonyBuildPolicy.queueTarget(counts.getOrDefault("builder", 0));
-            if (orders.size() >= target) {
+            if (orders.size() >= target && prerequisite == null) {
                 ColonyStewardController.cancelVisit(npc);
                 return new Result(false, "Byggkön har " + orders.size() + " projekt. Jag besöker byggplatserna och fyller på när kön minskar; målet är "
                         + target + " samtidiga eller väntande projekt.");
@@ -120,11 +152,19 @@ public final class ColonyDevelopmentPlanner {
             }).thenComparingInt(Candidate::level).thenComparing(c -> c.position().asLong()));
             List<String> queued = new ArrayList<>();
             int rejected = 0;
+            List<String> blockers = new ArrayList<>();
             for (Candidate candidate : eligible) {
-                if (((Map<?, ?>) invoke(work, "getWorkOrders")).size() >= target) break;
+                boolean isPrerequisite = candidate.building() == prerequisite;
+                if (((Map<?, ?>) invoke(work, "getWorkOrders")).size() >= target && !isPrerequisite) continue;
                 String type = buildingType(candidate.building());
-                if (candidate.level() > 0 && residencePending) continue;
-                String receipt = queue(player, colony, work, candidate.building());
+                if (candidate.level() > 0 && type.equals("residence") && residencePending) continue;
+                String problem = builderProblem(colony, candidate.building());
+                if (!problem.isEmpty()) {
+                    blockers.add(type + " nivå " + (candidate.level() + 1) + ": "
+                            + (problem.equals("nivå") ? "behöver bemannat byggarhus på rätt nivå" : "behöver byggare inom räckhåll"));
+                    continue;
+                }
+                String receipt = queue(player, colony, work, candidate.building(), npc, isPrerequisite);
                 if (receipt == null) { rejected++; continue; }
                 queued.add(receipt);
                 if (type.equals("residence")) residencePending = true;
@@ -151,7 +191,7 @@ public final class ColonyDevelopmentPlanner {
                         ColonyBlueprintPlacement.place(player, colony, next, allBuildings, npc);
                 nextReport = placement.description();
                 if (placement.building() != null) {
-                    String receipt = queue(player, colony, work, placement.building());
+                    String receipt = queue(player, colony, work, placement.building(), npc, false);
                     if (receipt != null) queued.add(receipt);
                     else nextReport += ". Tomten finns, men MineColonies skapade ingen byggorder. "
                             + "Kontrollera Builder-nivå, avstånd och forskningskrav. Jag försöker med samma tomt nästa gång.";
@@ -159,8 +199,9 @@ public final class ColonyDevelopmentPlanner {
             }
             String report = queued.isEmpty() ? "Inga nya byggordrar skapades." :
                     "Verkliga MineColonies-ordrar i byggkön: " + String.join("; ", queued) + ".";
-            if (rejected > 0) report += " MineColonies accepterade inte " + rejected
-                    + " andra byggförsök; kontrollera forskningskrav och byggarnas nivå/avstånd.";
+            if (rejected > 0) report += " " + rejected
+                    + " projekt väntar efter nekad beställning eller under återförsökspaus; kontrollera forskningskrav och byggarnas nivå/avstånd.";
+            if (!blockers.isEmpty()) report += " Väntar: " + String.join("; ", blockers) + ".";
             if (!nextReport.isEmpty()) report += " " + nextReport;
             if (queued.isEmpty() && next == null && rejected == 0) report +=
                     anyDeferred ? " Några tomtsökningar behöver ett nytt försök. Jag besöker byggplatser och försöker igen inom en minut."
@@ -182,33 +223,68 @@ public final class ColonyDevelopmentPlanner {
                 .replace("minecolonies:", "");
     }
 
-    private static String queue(ServerPlayer player, Object colony, Object work, Object building)
+    private static String queue(ServerPlayer player, Object colony, Object work, Object building, AiBotEntity npc, boolean prerequisite)
             throws ReflectiveOperationException {
         BlockPos position = (BlockPos) invoke(building, "getPosition");
         Map<?, ?> beforeOrders = (Map<?, ?>) invoke(work, "getWorkOrders");
         for (Object order : beforeOrders.values()) {
             if (order != null && position.equals(invoke(order, "getLocation"))) return null;
         }
+        if (!builderProblem(colony, building).isEmpty()) return null;
+        // Unmodelled gates (research, parents, etc.) may emit vanilla chat once, not every planning tick.
+        var retries = npc.getPersistentData().getCompound("AIKingdomsBuildRetries");
+        String retryKey = position.asLong() + ":" + invoke(building, "getBuildingLevel");
+        long now = npc.level().getGameTime();
+        if (now < retries.getLong(retryKey)) return null;
+        retries.putLong(retryKey, now + 1200);
+        npc.getPersistentData().put("AIKingdomsBuildRetries", retries);
         Set<?> before = new HashSet<>(beforeOrders.keySet());
         building.getClass().getMethod("requestUpgrade", Player.class, BlockPos.class)
                 .invoke(building, player, BlockPos.ZERO);
         for (Map.Entry<?, ?> entry : ((Map<?, ?>) invoke(work, "getWorkOrders")).entrySet()) {
             if (before.contains(entry.getKey()) || entry.getValue() == null
                     || !position.equals(invoke(entry.getValue(), "getLocation"))) continue;
-            // Existing priorities and active builders remain untouched. New tasks receive
-            // successively lower priorities, making the verified queue order deterministic.
+            // Ordinary tasks join the end. A necessary builder upgrade goes first among
+            // waiting work, without changing existing orders or interrupting active workers.
             int lowest = 0;
             for (Object order : beforeOrders.values()) {
                 if (order != null && order != entry.getValue()) lowest = Math.min(lowest,
                         ((Number) invoke(order, "getPriority")).intValue());
             }
             int priority = lowest > -100000 ? lowest - 1 : lowest;
+            if (prerequisite) {
+                int highest = 0;
+                for (Object order : beforeOrders.values()) {
+                    if (order != null && order != entry.getValue()) highest = Math.max(highest,
+                            ((Number) invoke(order, "getPriority")).intValue());
+                }
+                priority = highest == Integer.MAX_VALUE ? highest : highest + 1;
+            }
+            retries.remove(retryKey);
             entry.getValue().getClass().getMethod("setPriority", int.class).invoke(entry.getValue(), priority);
             work.getClass().getMethod("setDirty", boolean.class).invoke(work, true);
             invoke(colony, "markDirty");
             return "#" + entry.getKey() + " " + buildingType(building) + " vid " + position.toShortString();
         }
         return null;
+    }
+
+    /** Use MineColonies' own read-only checks before requestUpgrade broadcasts a rejection. */
+    private static String builderProblem(Object colony, Object building) throws ReflectiveOperationException {
+        Class<?> orderType = Class.forName("com.minecolonies.api.colony.workorders.WorkOrderType");
+        String action = ((Number) invoke(building, "getBuildingLevel")).intValue() == 0 ? "BUILD" : "UPGRADE";
+        Object kind = null;
+        for (Object value : orderType.getEnumConstants()) if (((Enum<?>) value).name().equals(action)) kind = value;
+        Class<?> colonyType = Class.forName("com.minecolonies.api.colony.IColony");
+        Object preview = Class.forName("com.minecolonies.core.colony.workorders.WorkOrderBuilding")
+                .getMethod("create", orderType, Class.forName("com.minecolonies.api.colony.buildings.IBuilding"))
+                .invoke(null, kind, building);
+        int level = ((Number) invoke(preview, "getTargetLevel")).intValue();
+        boolean special = Boolean.TRUE.equals(building.getClass().getMethod("canBeBuiltByBuilder", int.class).invoke(building, level));
+        boolean resolved = Boolean.TRUE.equals(preview.getClass().getMethod("canBeResolved", colonyType, int.class).invoke(preview, colony, level));
+        if (!special && !resolved) return "nivå";
+        if (Boolean.TRUE.equals(preview.getClass().getMethod("tooFarFromAnyBuilder", colonyType, int.class).invoke(preview, colony, level))) return "avstånd";
+        return "";
     }
 
     private record Candidate(Object building, BlockPos position, int level, int maxLevel) {

@@ -258,6 +258,10 @@ public class AiBotEntity extends PathfinderMob {
                 + "Du får hitta på fiktiva berättelser och förslag, men märk dem tydligt som fantasi eller förslag. "
                 + "Du har INGEN automatisk åtkomst till spelvärldens resurser, arméer, städer eller byggnader. "
                 + "Gissa ALDRIG speldata och påstå ALDRIG att du har utfört uppdrag. "
+                + "Byggplaner gäller Minecraft och MineColonies: tala om material, byggarhus, ritningar och plats. "
+                + "Hitta inte på krav på pengar eller finansiering. Ett önskemål om slott är ett förslag, inte en utförd byggorder. "
+                + "Håll arbetsbesked korta och konkreta; undvik jubel, utfyllnad och onödiga följdfrågor. "
+                + "Verifierad senaste stadsplaneringsstatus: " + getStewardReport() + ". "
                 + "Om verifierad information saknas, säg tydligt att du inte vet.";
     }
 

@@ -121,3 +121,9 @@ Spoken activation: **Aldric, bygg ut staden självständigt, du får bestämma.*
   `UnknownHostException: services.gradle.org` while downloading Gradle 8.1.1.
 - The earlier screenshot confirmed blueprint loading reaches site search; **this walking/search
   update has not yet been Forge-compiled or tested in Minecraft**.
+
+## Regression: blocked upgrades and chat
+
+The planner now previews MineColonies builder-level/distance checks before requesting an order. A blocked eligible housing upgrade can select one staffed builder hut upgrade first, with queue priority above waiting projects. An existing builder construction/upgrade prevents redundant builder upgrades. This does not interrupt a builder's current job. Other request failures are retried at most once per minute per NPC/site/level. Automatic identical status reports are suppressed; changed non-action status reports are limited to once per minute. Successful order receipts remain visible.
+
+In a copied world, fill housing with only level-1 builder huts and eligible level-1 housing. Enable auto: expect a builder-hut upgrade to level 2 before a residence upgrade, no repeated level-required warnings every five seconds, and no repeated builder-hut orders while one is pending. After the builder upgrade completes, housing should become eligible. Check a project outside builder range is skipped quietly. Check research-locked requests are not retried faster than one minute. Confirm manual colony status still provides the current report. Full Forge build and in-game verification remain required.
