@@ -7,6 +7,7 @@ import com.aibots.common.ai.AiService;
 import com.aibots.common.ai.AiSettings;
 import com.aibots.common.entity.AiBotEntity;
 import com.aibots.common.entity.PlayerConversation;
+import com.aibots.forge.client.VoiceReplyOutbox;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -45,6 +46,8 @@ public final class ModNetwork {
                 SettingsSyncMessage::decode, SettingsSyncMessage::handle);
         CHANNEL.registerMessage(id++, SettingsMessage.class, SettingsMessage::encode,
                 SettingsMessage::decode, SettingsMessage::handle);
+        CHANNEL.registerMessage(id++, VoiceReplyMessage.class, VoiceReplyMessage::encode,
+                VoiceReplyMessage::decode, VoiceReplyMessage::handle);
     }
 
     // ---------------- Ask: client -> server ----------------
@@ -104,6 +107,43 @@ public final class ModNetwork {
             context.enqueueWork(() -> AiNetworking.onReply(msg.prefix, msg.reply));
             context.setPacketHandled(true);
         }
+    }
+
+    // ---------------- NPC voice reply: server -> client ----------------
+
+    public static class VoiceReplyMessage {
+        final String npcName;
+        final String response;
+
+        VoiceReplyMessage(String npcName, String response) {
+            this.npcName = npcName;
+            this.response = response;
+        }
+
+        static void encode(VoiceReplyMessage msg, FriendlyByteBuf buf) {
+            buf.writeUtf(msg.npcName, 100);
+            buf.writeUtf(msg.response, 1024);
+        }
+
+        static VoiceReplyMessage decode(FriendlyByteBuf buf) {
+            return new VoiceReplyMessage(buf.readUtf(100), buf.readUtf(1024));
+        }
+
+        static void handle(VoiceReplyMessage msg, Supplier<NetworkEvent.Context> ctx) {
+            NetworkEvent.Context context = ctx.get();
+            context.enqueueWork(() -> VoiceReplyOutbox.send(msg.npcName, msg.response));
+            context.setPacketHandled(true);
+        }
+    }
+
+    /** Only actual selected NPCs get speech, never the global assistant. */
+    public static void speakNpc(ServerPlayer player, AiBotEntity bot, String reply) {
+        if (bot == null || player == null || reply == null || reply.isBlank()) {
+            return;
+        }
+        String clipped = reply.length() > 1000 ? reply.substring(0, 1000) : reply;
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                new VoiceReplyMessage(bot.botName(), clipped));
     }
 
     // ---------------- Settings request: client -> server ----------------
@@ -223,15 +263,35 @@ public final class ModNetwork {
         String system;
         if (target != null) {
             prefix = "<" + target.botName() + "> ";
+            String executed = NpcIntentExecutor.tryExecute(player, target, message);
+            if (executed != null) {
+                callback.accept(prefix, executed);
+                speakNpc(player, target, executed);
+                return;
+            }
+            String identityReply = target.verifiedReply(message);
+            if (identityReply != null) {
+                callback.accept(prefix, identityReply);
+                speakNpc(player, target, identityReply);
+                return;
+            }
             system = target.getPersonality();
         } else {
-            prefix = "";
-            system = AiConfig.get().systemPrompt;
+            callback.accept("[AI Kingdoms] ", "Ingen NPC vald. Högerklicka på en NPC eller använd /aibots select Aldric Ravencrest.");
+            return;
         }
 
+        String contextualMessage = target != null ? target.messageWithHistory(message) : message;
         player.sendSystemMessage(Component.literal("Thinking...").withStyle(ChatFormatting.GRAY));
-        AiService.ask(system, message).thenAccept(reply ->
-                player.server.execute(() -> callback.accept(prefix, reply)));
+        AiBotEntity speaker = target;
+        AiService.ask(system, contextualMessage).thenAccept(reply ->
+                player.server.execute(() -> {
+                    if (speaker != null && speaker.isAlive()) {
+                        speaker.rememberExchange(message, reply);
+                    }
+                    callback.accept(prefix, reply);
+                    speakNpc(player, speaker, reply);
+                }));
     }
 
     public interface ReplyCallback {

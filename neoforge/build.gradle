@@ -12,6 +12,12 @@ base {
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
+// Java sources are stored as UTF-8. Windows may default to a legacy code page,
+// corrupting Swedish literals and the language-aware world-fact guard.
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
 neoForge {
     version = '21.4.157'
 

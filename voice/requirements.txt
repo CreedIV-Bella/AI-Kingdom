@@ -1,0 +1,5 @@
+# Local Windows voice input. Faster-whisper model downloads once then runs locally.
+faster-whisper>=1.1,<2
+numpy>=1.26,<3
+sounddevice>=0.5,<1
+keyboard>=0.13,<1

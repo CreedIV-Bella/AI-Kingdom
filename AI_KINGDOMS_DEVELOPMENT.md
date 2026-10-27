@@ -1,0 +1,200 @@
+# AI Kingdoms – development notes
+
+> Current MineColonies implementation and test instructions: [MINECOLONIES_STEWARD_TEST.md](MINECOLONIES_STEWARD_TEST.md). Older entries below are historical; the latest code is not yet Forge-compiled/game-tested.
+
+This repository is a fork of `devoffeed/ai-job-mod`. Original license and notices remain in place.
+
+## v0.2 – persistent NPC identity (first iteration)
+
+### Included
+
+- NPCs spawned **without** an explicit custom name receive a medieval-style first and last name.
+- Generated names and one random personality trait are stored in the Minecraft entity NBT and survive saving/reloading the world.
+- Existing `/summon ... {CustomName:...}` names are preserved.
+- NPCs are marked persistent; they must not despawn solely because the player moves away. This does **not** prevent death, `/kill`, mod conflicts, or deletion of world data.
+- NPC replies receive a per-character system prompt: their persistent name, a default royal-advisor role, Swedish-language output, brief replies, and instructions not to invent confirmed in-game facts or claim tasks were completed.
+- `setRole` and `setPersonality` are available in code for later expansion.
+
+### Not included yet
+
+- LLM-generated names (the first iteration draws from curated name lists).
+- Persistent conversational memory.
+- NPC job commands, pathfinding tasks, role-selection GUI, unique skins, voices, or knowledge of live MineColonies/Create data.
+- Guaranteed uniqueness of generated names. Distinct NPCs may share a generated name.
+- Guaranteed Swedish output for arbitrary conversations. Prompts influence the model but cannot enforce language or prevent hallucinations. Bare name/identity questions use a deterministic response.
+
+## Test on Minecraft Forge 1.20.1
+
+1. Keep the existing working CurseForge profile and world as a backup.
+2. Check out the `feature/npc-identity-v0-2` branch in the local clone.
+3. Confirm JDK 17 is selected: `java -version`, `javac -version`.
+4. From the `forge` folder run `gradlew.bat build`.
+5. Find the new jar in `forge/build/libs/`. Use the **reobfuscated** normal release jar, not `*-sources.jar` or `*-dev.jar`.
+6. Shut down Minecraft. In a **copy** of your modpack, move the original `aibots-forge-1.0.0.jar` out of `mods/` and put the newly built jar there instead. Do **not** load both jars.
+7. Open a **copy** of the creative test world. Run `/summon aibots:ai_bot ~ ~ ~` without `CustomName` and verify that a generated name appears.
+8. Right-click the new NPC, then run `/aibots who`: it must show the exact NPC name and role. If it says no NPC is selected, right-click again. Conversation selection is temporary, not persisted across world/server restarts.
+9. Ask `/ask Vad heter du?`: the exact persisted name should be returned in Swedish without a language-model call. Repeat using `M` and the same question.
+10. Ask `/ask Vad vet du om vårt kungadöme?`: the model should answer in Swedish and avoid inventing real game facts. This is a *behavioral prompt test*, not a guarantee against hallucinations.
+11. Save and quit the world. Reopen it and confirm that the name and conversational identity stay the same; right-click again to select the NPC for chat.
+12. Test a manually named NPC with `/summon aibots:ai_bot ~ ~ ~ {CustomName:'"Kunglig Rådgivare"'}`; its name must not be overwritten.
+13. Ask about troops or resources that have not been provided. The bot should admit that it doesn't know.
+
+**Important:** A prompt improves reliability but cannot eliminate hallucinations. The NPC still has no read-access to verified game state. Later features must retrieve world facts and validate commands in code.
+
+### Feedback
+
+If the build fails, save the error output. If the game crashes, keep `latest.log` and the crash report from the copied CurseForge profile. Do not edit or replace the original backup.
+
+## If a named NPC disappears
+
+A failed `/execute if entity @e[type=aibots:ai_bot,name="Freya Ironwood"]` only proves that the NPC is not **loaded in the current dimension**. It does not inspect entities stored in unloaded chunks or other dimensions.
+
+- First revisit Freya's last known location (in the same world and dimension), to force her chunk to load.
+- Then run `/execute as @e[type=aibots:ai_bot] run data get entity @s CustomName` to inspect the names of currently loaded bots.
+- If Freya exists in a backup, restore a **copy** of the world from before her disappearance to recover the same entity/UUID.
+- If she has died or been deleted, this mod currently has no resurrection/history system. You can summon a **new** bot under that name, but it will not be the original entity:
+  `/summon aibots:ai_bot ~ ~ ~ {CustomName:'{"text":"Freya Ironwood"}',PersistenceRequired:1b}`
+
+From this commit forward, new and reloaded NPCs are marked persistent against distance despawning. Build and test this change before merging the pull request. The cause of a specific missing NPC cannot be established from a failed selector alone.
+
+## v0.2 – temporary kingdom-facts guard (regression fix)
+
+AI Kingdoms does not yet have a verified MineColonies/army/resources data connector. The earlier language-model-only system prompt was **not** sufficient: NPCs made up army counts (e.g. 3,500 infantry and 500 hussars).
+
+The new `WorldFactGuard` handles common factual questions about the CURRENT kingdom without calling Ollama, for both `/ask` and the M chat GUI. It replies that verified data is unavailable rather than inventing military strength or resources. Hypothetical strategy questions and explicit requests for creative fiction still reach the model.
+
+**Limitations:** This is a conservative keyword-based temporary guard, not general hallucination detection, not a source of real world data, and it may not catch every phrasing. Other model replies can still hallucinate. The long-term fix is live game-state adapters, typed tool outputs, permission-controlled commands and validation.
+
+To run the small standalone tests from a Windows CMD prompt at the repository root:
+
+```cmd
+mkdir build-test
+javac -encoding UTF-8 -d build-test common\src\main\java\com\aibots\common\ai\WorldFactGuard.java common\src\test\java\com\aibots\common\ai\WorldFactGuardSelfTest.java
+java -cp build-test com.aibots.common.ai.WorldFactGuardSelfTest
+```
+
+Expected: `14 WorldFactGuard self-tests passed (including UTF-8 text).`
+
+Then build the mod from `forge\` with `gradlew.bat build` and test:
+- `/ask Hur många soldater har vårt kungadöme?` => says it has no verified data
+- `/ask Har vi 500 husarer?` => says it has no verified data
+- `/ask Vilka resurser har vi?` => says it has no verified data
+- `/ask Vi har 40 soldater och fienden 70. Föreslå en strategi.` => forwarded to Ollama for hypothetical strategy
+
+## UTF-8 fix after the first Minecraft test
+
+The screenshot revealed that the guard's output said broken strings such as `vÃ¥rt` instead of `vårt`, and the question `Hur många soldater har vårt kungadöme?` reached the LLM while `Har vi 500 husarer?` was correctly blocked. These were consistent with the compiler interpreting UTF-8 Java files using a Windows legacy character encoding.
+
+Both Forge and NeoForge `build.gradle` files now explicitly configure Java compilation with `options.encoding = 'UTF-8'`. The self-test checks that the guard handles more question variants **and** that Swedish output does not contain common mojibake artifacts.
+
+**Rebuild after changing compiler encoding** to force the old `.class` files to be regenerated:
+
+```cmd
+cd /d C:\Users\johan\AI-Kingdom
+git pull --ff-only
+cd forge
+gradlew.bat clean build
+```
+
+Then close Minecraft and replace the old test jar in `mods/` with the new output from `forge/build/libs/`. Verify Swedish letters, both real-state questions, and a hypothetical strategy prompt. Keep the world backup and keep only one `aibots` jar loaded.
+
+## v0.3 preview – medieval skins + actual Minecraft actions
+
+**In progress, NOT yet compiled/tested in the modpack.**
+
+### New features
+
+- Four `64×64` classic-model player-skin textures: royal, artisan, guard, scholar.
+- Each AI bot has a deterministic, separately persisted 0–3 skin variant synchronized to the client with `SynchedEntityData`. Old saved bots are assigned a stable variant derived from UUID without changing their name.
+- Actual server-side pathfinding using Minecraft `Goal` and `PathNavigation`; not a fictional AI promise:
+  - `/aibots follow` — follow the selected player (same dimension).
+  - `/aibots stay` — stop and stay at current location.
+  - `/aibots wander` — walk around using vanilla random-stroll navigation.
+  - `/aibots go ~5 ~ ~5` — walk towards the specified coordinates (relative to **player's** position).
+  - `/aibots status` — show the saved movement mode and latest status.
+  - `/aibots inspect` — count a few kinds of *real nearby blocks* around the NPC, with strict radius and without claiming knowledge of the whole village.
+- Follow orders and move modes are stored in NBT; the target player must be online and in the same dimension. NPCs do not teleport. Pathfinding can fail on walls, water, closed doors, unloaded chunks, or long distances.
+
+### Test this separately on a copied world
+
+```cmd
+cd /d C:\Users\johan\AI-Kingdom
+git pull --ff-only
+cd forge
+gradlew.bat clean build
+```
+
+Shut down Minecraft and replace the previous test JAR in the copied CurseForge profile. Keep **only one** `aibots` JAR.
+
+1. Spawn several NPCs and verify that different medieval skins render correctly.
+2. Save/reopen the world and confirm the selected NPC's skin and name persist.
+3. Right-click an NPC and run `/aibots who`.
+4. Run `/aibots follow`; walk a few blocks on relatively flat terrain. Check it really moves.
+5. Run `/aibots stay` and confirm it stops.
+6. Try `/aibots go ~5 ~ ~5` and inspect `/aibots status`. Destination is limited to 96 blocks from the bot and must be in a loaded chunk. If navigation fails, the status should report the obstruction.
+7. Lead the NPC to the village by `/aibots follow`, then use `/aibots stay` and `/aibots inspect`. The inspection checks only 8 blocks horizontally and 3 vertically, not the whole village and not MineColonies internal records.
+8. Inspect the game logs if it crashes or movement does not work.
+
+### What is *not* implemented
+
+- No placing blocks, digging, repairing houses, assigning MineColonies worker jobs, construction using schematics, or Create machinery control yet. These need carefully validated bridges to game/mod APIs and actual inventory consumption.
+- No free-form AI action planning/execution yet. These movement commands are real but explicitly selected by the player.
+- The skins are simple hand-authored pixel-art prototypes, not yet textured armor/role-consistent cosmetics.
+
+### Local Swedish voice prototype
+
+An experimental Windows script is available in `voice/`. Read `voice/README.md` for optional setup. F9 push-to-talk turns Swedish speech into `/ask` or approved `/aibots` commands locally using faster-whisper. It is **input only**; no spoken NPC response yet. For future voice **output**, plan to use local Piper TTS with Swedish voice packs, choosing voice by persisted NPC identity.
+
+Once the above build and gameplay tests pass, move the verified code out of the draft PR and continue with role-based actions and MineColonies integration.
+
+
+## 2026-10-27 – Lakeside colony status and voice fixes
+
+User verified that the MineColonies server integration correctly found:
+- Lakeside, colony #1, at 331 / 70 / 49.
+- 4 of 4 citizens, 12 registered buildings, 3 builder huts, 3 active builders.
+- 4 registered orders: Warehouse #6, Town Hall #10, Residence #11 assigned;
+  Guard Tower #12 awaiting assignment.
+
+Two problems were observed:
+1. When the selected NPC was lost, /ask warned "Ingen NPC vald" yet
+   forwarded the question to a generic model, yielding an invented job report.
+2. Piper spoke raw status identifiers and Java BlockPos punctuation aloud.
+
+**Fixes committed to the development branch, not yet re-tested in Minecraft:**
+- Fail closed in /ask and the AI GUI when no selected NPC exists. No anonymous
+  LLM fallback now.
+- Add /aibots select Aldric Ravencrest (exact saved NPC name, case insensitive,
+  maximum 32 blocks, loaded entity required; refuses duplicate matches).
+- Add exact speech command "Prata med Aldric" => safe /aibots select
+  Aldric Ravencrest; restricted by the Forge voice command allowlist.
+- voice/tts_swedish.py now uses prepare_speech_text() for **audio only**, while
+  preserving the unmodified detailed original in game chat. It extracts
+  population, registered buildings, builders and registered orders from the
+  server report and speaks a compact Swedish summary. Generic answers are
+  stripped of debug symbols, raw BlockPos and visible work order IDs.
+- voice/test_speech_text.py covers the exact Lakeside report and punctuation
+  handling; voice/smoke_test.py covers spoken selection.
+
+Run Python tests without launching Minecraft:
+
+```cmd
+cd /d C:\Users\johan\AI-Kingdom
+voice\.venv\Scripts\python.exe voice\test_speech_text.py
+voice\.venv\Scripts\python.exe voice\smoke_test.py
+```
+
+Then rebuild JDK17/Forge, replace the game JAR and restart the Python process.
+With Aldric physically near:
+```mcfunction
+/aibots select Aldric Ravencrest
+/aibots who
+/ask Aldric, hur går det med byggarna?
+```
+
+The third line should now be an accurate colony report from Aldric and spoken
+as a succinct sentence with no raw #/[]/{}/ symbols.
+
+Outstanding work: editing MineColonies work orders to auto-construct buildings
+has **not** been implemented. First add a validated work order adapter and
+experiment in a copied world, starting with a small decoration blueprint.
