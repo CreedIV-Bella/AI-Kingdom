@@ -22,6 +22,12 @@ public final class WorldFactGuardSelfTest {
         expectFree("Hur många soldater hade romarriket?");
         expectFree("Vi har 40 soldater och fienden 70. Föreslå en strategi.");
         expectFree("Hitta på en historia om vårt rike.");
+        expectBlocked("Fungerar vår fabrik?");
+        expectBlocked("Är vår järnväg igång?");
+        expectBlocked("Hur många tåg har vi?");
+        expectBlocked("Fungerar maskinerna?");
+        expectFree("Hur fungerar Create transportband?");
+        expectFree("Föreslå en ny fabrik för vår stad.");
         expectFree("Vad heter du?");
 
         String unknown = WorldFactGuard.UNKNOWN_WORLD_STATE;
@@ -29,7 +35,7 @@ public final class WorldFactGuardSelfTest {
                 || unknown.contains("Ã") || unknown.contains("Â")) {
             throw new AssertionError("Swedish letters decoded incorrectly: " + unknown);
         }
-        System.out.println("14 WorldFactGuard self-tests passed (including UTF-8 text).");
+        System.out.println("20 WorldFactGuard self-tests passed (including UTF-8 text).");
     }
 
     private static void expectBlocked(String input) {
