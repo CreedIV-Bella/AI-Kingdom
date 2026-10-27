@@ -37,7 +37,7 @@ PROCESS_QUERY = (
     "$ErrorActionPreference='SilentlyContinue';"
     "Get-CimInstance Win32_Process -Filter "
     "\"Name='javaw.exe' OR Name='java.exe' OR "
-    "Name='python.exe' OR Name='pythonw.exe'\" | "
+    "Name='python.exe' OR Name='pythonw.exe' OR Name='ollama.exe'\" | "
     "Select-Object Name,ProcessId,CommandLine | ConvertTo-Json -Compress"
 )
 
@@ -90,6 +90,10 @@ def is_voice_process(info: dict) -> bool:
         return False
     cmd = str(info.get("CommandLine") or "").casefold()
     return "voice_to_minecraft.py" in cmd
+
+
+def is_ollama_process(info: dict) -> bool:
+    return str(info.get("Name", "")).casefold() == "ollama.exe"
 
 
 def ollama_is_healthy() -> bool:
@@ -198,7 +202,10 @@ def main() -> None:
             if minecraft_running:
                 missing_game_checks = 0
                 if not ollama_is_healthy():
-                    if time.monotonic() - last_ollama_attempt >= 45:
+                    # If the GUI is already starting a server, wait rather
+                    # than racing it by opening a duplicate Ollama process.
+                    ollama_running = any(is_ollama_process(p) for p in processes)
+                    if not ollama_running and time.monotonic() - last_ollama_attempt >= 45:
                         last_ollama_attempt = time.monotonic()
                         start_ollama()
 
