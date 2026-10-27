@@ -6,6 +6,9 @@ import com.aibots.common.entity.AiBotEntity;
 import com.aibots.common.entity.PlayerConversation;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.coordinates.Vec3Argument;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.common.MinecraftForge;
@@ -41,6 +44,17 @@ public class AIBotsForge {
             Commands.literal("aibots")
                 .then(Commands.literal("who")
                     .executes(this::who))
+                .then(Commands.literal("follow")
+                    .executes(this::follow))
+                .then(Commands.literal("stay")
+                    .executes(this::stay))
+                .then(Commands.literal("wander")
+                    .executes(this::wander))
+                .then(Commands.literal("status")
+                    .executes(this::status))
+                .then(Commands.literal("go")
+                    .then(Commands.argument("position", Vec3Argument.vec3())
+                        .executes(this::go)))
                 .then(Commands.literal("stop")
                     .executes(this::stop))
                 .then(Commands.literal("reload")
@@ -112,6 +126,91 @@ public class AIBotsForge {
                     "Du pratar med " + target.botName() + " (" + target.getRole() + ").")
                     .withStyle(ChatFormatting.GREEN));
         }
+        return 1;
+    }
+
+
+    private AiBotEntity selectedNpc(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        ServerPlayer player;
+        try {
+            player = ctx.getSource().getPlayerOrException();
+        } catch (Exception e) {
+            ctx.getSource().sendFailure(Component.literal("Detta kommando kräver en spelare."));
+            return null;
+        }
+        AiBotEntity bot = PlayerConversation.getTarget(player);
+        if (bot == null) {
+            player.sendSystemMessage(Component.literal(
+                    "Ingen NPC vald. Högerklicka på invånaren först.")
+                    .withStyle(ChatFormatting.YELLOW));
+        }
+        return bot;
+    }
+
+    private int follow(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        AiBotEntity bot = selectedNpc(ctx);
+        if (bot == null) return 0;
+        ServerPlayer player = ctx.getSource().getPlayer();
+        if (player == null || bot.level() != player.level()) return 0;
+        bot.followPlayer(player);
+        player.sendSystemMessage(Component.literal(bot.botName() + ": Jag följer dig.")
+                .withStyle(ChatFormatting.GREEN));
+        return 1;
+    }
+
+    private int stay(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        AiBotEntity bot = selectedNpc(ctx);
+        if (bot == null) return 0;
+        bot.stay();
+        ctx.getSource().sendSuccess(() ->
+                Component.literal(bot.botName() + " stannar här."), false);
+        return 1;
+    }
+
+    private int wander(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        AiBotEntity bot = selectedNpc(ctx);
+        if (bot == null) return 0;
+        bot.wander();
+        ctx.getSource().sendSuccess(() ->
+                Component.literal(bot.botName() + " börjar vandra omkring."), false);
+        return 1;
+    }
+
+    private int status(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        AiBotEntity bot = selectedNpc(ctx);
+        if (bot == null) return 0;
+        ctx.getSource().sendSuccess(() ->
+                Component.literal(bot.botName() + ": " + bot.getTravelReport()
+                        + " (läge " + bot.getMoveMode() + ")"), false);
+        return 1;
+    }
+
+    private int go(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        AiBotEntity bot = selectedNpc(ctx);
+        if (bot == null) return 0;
+        Vec3 vec = Vec3Argument.getVec3(ctx, "position");
+        BlockPos pos = BlockPos.containing(vec.x, vec.y, vec.z);
+
+        // Bound navigation work and avoid making the mod a chunk-loading tool.
+        double maxRange = 96.0D;
+        if (bot.distanceToSqr(Vec3.atCenterOf(pos)) > maxRange * maxRange) {
+            ctx.getSource().sendFailure(Component.literal(
+                    "Destinationen är för långt bort (max 96 block). "
+                    + "Använd /aibots follow för längre resor."));
+            return 0;
+        }
+        if (pos.getY() < bot.level().getMinBuildHeight()
+                || pos.getY() >= bot.level().getMaxBuildHeight()
+                || !bot.level().hasChunkAt(pos)) {
+            ctx.getSource().sendFailure(Component.literal(
+                    "Destinationen måste vara en laddad, giltig position."));
+            return 0;
+        }
+
+        bot.goTo(pos);
+        ctx.getSource().sendSuccess(() ->
+                Component.literal(bot.botName() + " går mot " + pos.toShortString()
+                        + ". Kontrollera /aibots status efteråt."), false);
         return 1;
     }
 
