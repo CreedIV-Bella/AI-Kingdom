@@ -1,7 +1,7 @@
 """
 Local Swedish push-to-talk input for AI Kingdoms (Windows / Minecraft Forge 1.20.1).
 
-Ctrl+Alt+V -> capture 5 sec -> faster-whisper -> write a timestamped command
+Ctrl+Shift+F8 -> capture 5 sec -> faster-whisper -> write a timestamped command
 to a private local inbox. Our Forge client sends it directly to Minecraft's
 command handler on the game thread. There are NO simulated keyboard presses.
 
@@ -25,7 +25,7 @@ from faster_whisper import WhisperModel
 
 SAMPLE_RATE = 16000
 SECONDS = 5
-HOTKEY = "ctrl+alt+v"
+HOTKEY = os.environ.get("AI_KINGDOMS_VOICE_HOTKEY", "ctrl+shift+f8")
 EXIT_HOTKEY = "ctrl+shift+f12"
 MAX_CHARS = 320
 MAX_AGE_MS = 15000
@@ -163,7 +163,9 @@ def main() -> None:
     print(f"Redo! Fokusera Minecraft och tryck {HOTKEY.upper()} för att tala.")
     print(f"Köfil: {INBOX}")
     print(f"Avsluta med {EXIT_HOTKEY.upper()} (globalt kortkommando).")
-    keyboard.add_hotkey(HOTKEY, start_recording)
+    # On Windows, prevent the hotkey from also activating a game keybind.
+    # Some raw-input configurations may still receive it; choose an unused key there.
+    keyboard.add_hotkey(HOTKEY, start_recording, suppress=True, trigger_on_release=True)
     keyboard.wait(EXIT_HOTKEY)
 
 
