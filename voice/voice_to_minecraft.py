@@ -1,15 +1,18 @@
 """
-Experimental LOCAL Swedish push-to-talk bridge for AI Kingdoms on Windows.
+Local Swedish push-to-talk input for AI Kingdoms (Windows / Minecraft Forge 1.20.1).
 
-F9 (with Minecraft focused) -> record 5 seconds -> transcribe using faster-whisper
--> paste a safe slash command into the Minecraft chat.
+Ctrl+Alt+V -> capture 5 sec -> faster-whisper -> write a timestamped command
+to a private local inbox. Our Forge client sends it directly to Minecraft's
+command handler on the game thread. There are NO simulated keyboard presses.
 
-This is a convenience prototype, not a secure network API or NPC voice playback.
-No recorded audio files are stored. The speech model downloads once.
+The voice bridge uses only permitted /ask or /aibots commands, never arbitrary
+shell commands or unrestricted Minecraft commands. Not a voice-output engine.
 """
 from __future__ import annotations
 
 import ctypes
+import os
+from pathlib import Path
 import re
 import sys
 import threading
@@ -17,18 +20,17 @@ import time
 
 import keyboard
 import numpy as np
-import pyperclip
 import sounddevice as sd
 from faster_whisper import WhisperModel
 
 SAMPLE_RATE = 16000
 SECONDS = 5
-HOTKEY = "f9"
+HOTKEY = "ctrl+alt+v"
 EXIT_HOTKEY = "ctrl+shift+f12"
 MAX_CHARS = 320
-
-# CPU int8 keeps the GPU free for Minecraft and Ollama. Start with "base".
-MODEL = "base"
+MAX_AGE_MS = 15000
+MODEL = os.environ.get("AI_KINGDOMS_WHISPER_MODEL", "base")
+INBOX = Path.home() / "AI-Kingdoms" / "voice-command.txt"
 model: WhisperModel
 busy = threading.Lock()
 
@@ -45,13 +47,17 @@ def minecraft_is_focused() -> bool:
 
 
 def command_from_speech(text: str) -> str | None:
-    # Always treat free speech as chat text; never execute arbitrary slash commands.
     cleaned = " ".join(text.split())[:MAX_CHARS].strip()
     if not cleaned:
         return None
-    plain = re.sub(r"[^\wåäö ]+", "", cleaned.casefold()).strip()
 
-    if plain in {"följ mig", "kom efter mig", "följ efter mig"}:
+    # Normalize punctuation/case, but only whitelist very short, unambiguous
+    # command phrases. Anything else is a question sent to /ask.
+    plain = re.sub(r"[^\wåäö ]+", "", cleaned.casefold()).strip()
+    if plain in {
+        "följ mig", "följ med", "följe mig", "följa med", "följa mig",
+        "kom efter mig", "följ efter mig",
+    }:
         return "/aibots follow"
     if plain in {"stanna", "stå still", "stanna här", "vänta här"}:
         return "/aibots stay"
@@ -62,7 +68,30 @@ def command_from_speech(text: str) -> str | None:
     if plain in {"inspektera", "inspektera byn", "undersök området",
                  "inspektera området"}:
         return "/aibots inspect"
+    if plain in {"vem pratar jag med", "vem är vald"}:
+        return "/aibots who"
     return "/ask " + cleaned
+
+
+def queue_command(command: str) -> bool:
+    INBOX.parent.mkdir(parents=True, exist_ok=True)
+    if INBOX.exists():
+        try:
+            first_line = INBOX.read_text(encoding="utf-8").splitlines()[0]
+            age = int(time.time() * 1000) - int(first_line)
+            if 0 <= age < MAX_AGE_MS:
+                print("Föregående röstkommando väntar på Minecraft. Skickar inte ett till.")
+                return False
+        except (OSError, IndexError, ValueError):
+            pass
+
+    # Atomic replace prevents the game from seeing a half-written command.
+    temporary = INBOX.with_suffix(".tmp")
+    temporary.write_text(
+        f"{int(time.time() * 1000)}\n{command}\n", encoding="utf-8"
+    )
+    os.replace(temporary, INBOX)
+    return True
 
 
 def record_and_send() -> None:
@@ -71,7 +100,7 @@ def record_and_send() -> None:
         return
     try:
         if not minecraft_is_focused():
-            print("Ha Minecraft i förgrunden när du trycker F9.")
+            print("Ha Minecraft i förgrunden när du startar inspelningen.")
             return
 
         print(f"Spelar in {SECONDS} sekunder... Prata nu!")
@@ -82,7 +111,7 @@ def record_and_send() -> None:
             dtype="float32",
         )
         sd.wait()
-        # Discard silence instead of sending likely hallucinated transcriptions.
+
         samples = np.asarray(audio[:, 0], dtype=np.float32)
         if float(np.sqrt(np.mean(samples * samples))) < 0.005:
             print("Ingen tydlig röst upptäcktes.")
@@ -95,26 +124,22 @@ def record_and_send() -> None:
             vad_filter=True,
             beam_size=3,
             condition_on_previous_text=False,
+            initial_prompt="Minecraft. Aldric Ravencrest. Följ mig. Stanna här. Inspektera byn.",
         )
         message = " ".join(segment.text.strip() for segment in segments).strip()
-        cmd = command_from_speech(message)
-        if not cmd:
+        command = command_from_speech(message)
+        if not command:
             print("Ingen begriplig fras registrerades.")
             return
 
-        print(f"Hörde: {message!r} -> {cmd}")
-        # The player must still have Minecraft focused and the chat closed.
+        print(f"Hörde: {message!r} -> {command}")
+
         if not minecraft_is_focused():
-            print("Minecraft tappade fokus. Kommandot skickades inte.")
+            print("Minecraft tappade fokus. Röstkommandot skickades inte.")
             return
 
-        pyperclip.copy(cmd)
-        keyboard.press_and_release("t")
-        time.sleep(0.20)
-        keyboard.press_and_release("ctrl+v")
-        time.sleep(0.15)
-        keyboard.press_and_release("enter")
-        print("Skickat till Minecraft.")
+        if queue_command(command):
+            print("Röstkommandot är köat. Minecraft ska bekräfta det i spelchatten.")
     except Exception as error:
         print(f"Röstkommando misslyckades: {error}")
     finally:
@@ -122,17 +147,21 @@ def record_and_send() -> None:
 
 
 def start_recording() -> None:
-    threading.Thread(target=record_and_send, name="ai-kingdoms-voice",
-                     daemon=True).start()
+    threading.Thread(
+        target=record_and_send,
+        name="ai-kingdoms-voice",
+        daemon=True,
+    ).start()
 
 
 def main() -> None:
     global model
     if sys.platform != "win32":
-        raise SystemExit("Den här första röstbryggan är avsedd för Windows.")
+        raise SystemExit("Den här röstbryggan är avsedd för Windows.")
     print(f"Laddar Whisper {MODEL} (första gången laddas modellen ned)...")
     model = WhisperModel(MODEL, device="cpu", compute_type="int8")
     print(f"Redo! Fokusera Minecraft och tryck {HOTKEY.upper()} för att tala.")
+    print(f"Köfil: {INBOX}")
     print(f"Avsluta med {EXIT_HOTKEY.upper()} (globalt kortkommando).")
     keyboard.add_hotkey(HOTKEY, start_recording)
     keyboard.wait(EXIT_HOTKEY)
