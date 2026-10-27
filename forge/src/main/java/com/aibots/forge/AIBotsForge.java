@@ -17,6 +17,10 @@ import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.server.ServerLifecycleHooks;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLPaths;
 import net.minecraftforge.fml.ModList;
@@ -71,7 +75,14 @@ public class AIBotsForge {
                         .executes(this::colonyStatus))
                     .then(Commands.literal("prioritize")
                         .then(Commands.argument("orderId", IntegerArgumentType.integer(1))
-                            .executes(this::colonyPrioritize))))
+                            .executes(this::colonyPrioritize)))
+                    .then(Commands.literal("develop")
+                        .executes(this::colonyDevelop))
+                    .then(Commands.literal("auto")
+                        .then(Commands.literal("on")
+                            .executes(ctx -> setColonyAuto(ctx, true)))
+                        .then(Commands.literal("off")
+                            .executes(ctx -> setColonyAuto(ctx, false))))
                 .then(Commands.literal("go")
                     .then(Commands.argument("position", Vec3Argument.vec3())
                         .executes(this::go)))
@@ -319,6 +330,108 @@ public class AIBotsForge {
                 bot.botName() + ": " + report).withStyle(ChatFormatting.AQUA));
         ModNetwork.speakNpc(player, bot, report);
         return 1;
+    }
+
+
+    /** Run one verified housing-development decision on the Minecraft server. */
+    private int colonyDevelop(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        ServerPlayer player;
+        try {
+            player = ctx.getSource().getPlayerOrException();
+        } catch (Exception e) {
+            return 0;
+        }
+        AiBotEntity npc = PlayerConversation.getTarget(player);
+        if (npc == null) {
+            player.sendSystemMessage(Component.literal(
+                    "Välj Aldric först, till exempel /aibots select Aldric Ravencrest."));
+            return 0;
+        }
+        ColonyDevelopmentPlanner.Result result =
+                ColonyDevelopmentPlanner.develop(player, npc);
+        player.sendSystemMessage(Component.literal(npc.botName() + ": "
+                + result.description()).withStyle(ChatFormatting.AQUA));
+        ModNetwork.speakNpc(player, npc, result.description());
+        return 1;
+    }
+
+    private int setColonyAuto(
+            CommandContext<net.minecraft.commands.CommandSourceStack> ctx,
+            boolean enable) {
+        ServerPlayer player;
+        try {
+            player = ctx.getSource().getPlayerOrException();
+        } catch (Exception e) {
+            return 0;
+        }
+        AiBotEntity npc = PlayerConversation.getTarget(player);
+        if (npc == null || npc.level() != player.level()) {
+            player.sendSystemMessage(Component.literal("Välj Aldric först."));
+            return 0;
+        }
+        if (!ColonyDevelopmentPlanner.isOwner(player, npc)) {
+            player.sendSystemMessage(Component.literal(
+                    "Endast MineColonies-kolonins ägare kan slå på eller av automatiskt stadsansvar. "
+                    + "Var nära Aldric och kolonin."));
+            return 0;
+        }
+        if (enable) {
+            npc.setStewardEnabled(true, player.getUUID());
+            player.sendSystemMessage(Component.literal(
+                    npc.botName() + " är nu aktiv stadsförvaltare. "
+                    + "Varannan minut undersöker han bostadsbehovet när du är i närheten. "
+                    + "Han kan bara beställa bygg/uppgradering på registrerade bostadstomter; "
+                    + "nya tomter och vägar kräver fortfarande ritningar.")
+                    .withStyle(ChatFormatting.GREEN));
+            ColonyDevelopmentPlanner.Result first =
+                    ColonyDevelopmentPlanner.develop(player, npc);
+            player.sendSystemMessage(Component.literal(npc.botName() + ": "
+                    + first.description()).withStyle(ChatFormatting.AQUA));
+        } else {
+            if (!player.getUUID().equals(npc.getStewardOwnerUUID())
+                    && npc.isStewardEnabled()) {
+                player.sendSystemMessage(Component.literal(
+                        "Endast den som slog på stadsförvaltningen får stänga av den."));
+                return 0;
+            }
+            npc.setStewardEnabled(false, null);
+            player.sendSystemMessage(Component.literal(
+                    npc.botName() + " har pausat automatisk stadsplanering.")
+                    .withStyle(ChatFormatting.GREEN));
+        }
+        return 1;
+    }
+
+    /**
+     * Deliberately infrequent and gated by an online owner near a loaded NPC.
+     * No chunks are force-loaded, and no LLM is allowed to mutate the colony.
+     */
+    @SubscribeEvent
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        if (server == null || server.getTickCount() % 2400 != 0) return;
+
+        for (ServerLevel level : server.getAllLevels()) {
+            for (var entity : level.getAllEntities()) {
+                if (!(entity instanceof AiBotEntity bot) || !bot.isAlive()
+                        || !bot.isStewardEnabled()) continue;
+
+                ServerPlayer owner = server.getPlayerList().getPlayer(
+                        bot.getStewardOwnerUUID());
+                if (owner == null || owner.level() != bot.level()
+                        || owner.distanceToSqr(bot) > 128.0D * 128.0D) {
+                    continue;
+                }
+                ColonyDevelopmentPlanner.Result result =
+                        ColonyDevelopmentPlanner.develop(owner, bot);
+                if (result.modified()) {
+                    owner.sendSystemMessage(Component.literal(
+                            bot.botName() + " (stadsförvaltare): "
+                            + result.description()).withStyle(ChatFormatting.GREEN));
+                }
+            }
+        }
     }
 
     private int inspectCreate(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
