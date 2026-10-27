@@ -4,6 +4,7 @@ import com.aibots.common.entity.AiBotEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
 import java.lang.reflect.InvocationTargetException;
@@ -12,14 +13,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * VERIFIED read-only colony snapshot for MineColonies 1.20.1 / 1.1.1278.
+ * Verified MineColonies integration for 1.20.1 / 1.1.1278.
+ * Status is read-only. Explicit, authorized prioritization is a narrowly
+ * bounded write operation on existing unclaimed work orders.
  *
  * Reflection deliberately avoids compile/link-time requirements on MineColonies.
  * All method names below were checked against the tagged public IColony API
  * v1.20.1-1.1.1278-snapshot. Unlike LLM responses, this reports real data from
  * the running Minecraft server, or states why it cannot access the colony.
  *
- * Do not add write/build/createColony/deleteColony calls to this bridge.
+ * Never create/delete colonies, place blocks or assign active Builders here.
  */
 public final class MineColoniesBridge {
     private static final int MAX_WORK_ORDERS_IN_MESSAGE = 6;
@@ -136,6 +139,8 @@ public final class MineColoniesBridge {
                         .append(title, 0, Math.min(title.length(), 70))
                         .append("; nivå ")
                         .append(call(order, "getTargetLevel"))
+                        .append("; prioritet ")
+                        .append(call(order, "getPriority"))
                         .append("; ")
                         .append(Boolean.TRUE.equals(call(order, "isClaimed"))
                                 ? "tilldelad" : "väntar")
@@ -156,6 +161,120 @@ public final class MineColoniesBridge {
             return "Kunde inte läsa MineColonies API: "
                     + cause.getClass().getSimpleName()
                     + ". Kontrollera den installerade modversionen.";
+        }
+    }
+
+
+    /**
+     * Elevates one already-registered, *unclaimed* MineColonies order.
+     * Explicit player instruction only. This does not interrupt builders,
+     * create a blueprint, build blocks or bypass colony permissions.
+     */
+    public static String prioritize(ServerPlayer player, AiBotEntity bot, int orderId) {
+        if (player == null || orderId < 1) {
+            return "Ogiltig spelare eller arbetsorder.";
+        }
+        if (!net.minecraftforge.fml.ModList.get().isLoaded("minecolonies")) {
+            return "MineColonies är inte laddat.";
+        }
+
+        try {
+            Level world = player.serverLevel();
+            BlockPos playerPos = player.blockPosition();
+
+            Class<?> managerClass = Class.forName(
+                    "com.minecolonies.api.colony.IColonyManager");
+            Object manager = managerClass.getMethod("getInstance").invoke(null);
+            Object colony = managerClass.getMethod(
+                    "getColonyByPosFromWorld", Level.class, BlockPos.class)
+                    .invoke(manager, world, playerPos);
+
+            if (colony == null) {
+                Object nearest = managerClass.getMethod(
+                        "getClosestColony", Level.class, BlockPos.class)
+                        .invoke(manager, world, playerPos);
+                if (nearest != null
+                        && call(nearest, "getCenter") instanceof BlockPos center
+                        && playerPos.distSqr(center) <= MAX_NEARBY_DISTANCE_SQUARED) {
+                    colony = nearest;
+                }
+            }
+
+            if (colony == null) {
+                return "Ingen koloni i närheten. Gå till Lakesides stadshus.";
+            }
+
+            // Server-side authorization, using MineColonies' own permissions API.
+            // MANAGE_HUTS is the permission for changing work-order settings.
+            Object permissions = call(colony, "getPermissions");
+            Class<?> actionType = Class.forName(
+                    "com.minecolonies.api.colony.permissions.Action");
+            Object manageHuts = null;
+            for (Object action : actionType.getEnumConstants()) {
+                if ("MANAGE_HUTS".equals(((Enum<?>) action).name())) {
+                    manageHuts = action;
+                    break;
+                }
+            }
+            if (manageHuts == null) {
+                return "MineColonies saknar en verifierad behörighetskontroll.";
+            }
+            boolean allowed = Boolean.TRUE.equals(
+                    permissions.getClass().getMethod(
+                            "hasPermission", Player.class, actionType)
+                            .invoke(permissions, player, manageHuts));
+            if (!allowed) {
+                return "Du har inte rätt att hantera byggordrar i kolonin.";
+            }
+
+            Object workManager = call(colony, "getWorkManager");
+            Map<?, ?> orders = (Map<?, ?>) call(workManager, "getWorkOrders");
+            Object chosen = orders.get(orderId);
+            if (chosen == null) {
+                return "Arbetsorder " + orderId + " finns inte i den här kolonin.";
+            }
+            if (Boolean.TRUE.equals(call(chosen, "isClaimed"))) {
+                return "Order " + orderId
+                        + " är redan tilldelad en byggare. Jag ändrar bara väntande order.";
+            }
+
+            int highest = Integer.MIN_VALUE;
+            for (Object order : orders.values()) {
+                if (order == null) continue;
+                int priority = ((Number) call(order, "getPriority")).intValue();
+                highest = Math.max(highest, priority);
+            }
+            int original = ((Number) call(chosen, "getPriority")).intValue();
+            if (original >= highest) {
+                return "Order " + orderId + " har redan högst prioritet.";
+            }
+            if (highest >= 100000) {
+                return "Arbetskön har för höga prioritetstal för en säker ändring.";
+            }
+
+            int next = Math.max(1, highest + 1);
+            chosen.getClass().getMethod("setPriority", int.class)
+                    .invoke(chosen, next);
+            workManager.getClass().getMethod("setDirty", boolean.class)
+                    .invoke(workManager, true);
+            call(colony, "markDirty");
+
+            Object title = call(chosen, "getDisplayName");
+            String name = title instanceof Component component
+                    ? component.getString() : String.valueOf(title);
+            name = name.replace('\r', ' ').replace('\n', ' ');
+            if (name.length() > 70) name = name.substring(0, 70);
+            return "Klart. Jag har höjt prioriteten på order " + orderId
+                    + " (" + name + ") från " + original + " till " + next
+                    + " i MineColonies. Byggaren börjar först när den är ledig "
+                    + "och kan utföra arbetet med tillgängliga material.";
+        } catch (ReflectiveOperationException
+                 | RuntimeException | LinkageError exception) {
+            Throwable cause = exception instanceof InvocationTargetException e
+                    ? e.getTargetException() : exception;
+            return "MineColonies-ändringen misslyckades: "
+                    + cause.getClass().getSimpleName()
+                    + ". Kontrollera modversionen och spel-loggen.";
         }
     }
 
