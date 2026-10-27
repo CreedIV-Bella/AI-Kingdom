@@ -19,6 +19,7 @@ import threading
 import time
 
 import keyboard
+from tts_swedish import run_speech_loop
 import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
@@ -166,7 +167,15 @@ def main() -> None:
     # On Windows, prevent the hotkey from also activating a game keybind.
     # Some raw-input configurations may still receive it; choose an unused key there.
     keyboard.add_hotkey(HOTKEY, start_recording, suppress=True, trigger_on_release=True)
-    keyboard.wait(EXIT_HOTKEY)
+    shutdown = threading.Event()
+    speech_worker = threading.Thread(
+        target=run_speech_loop, args=(shutdown,), name="ai-kingdoms-tts", daemon=True)
+    speech_worker.start()
+    try:
+        keyboard.wait(EXIT_HOTKEY)
+    finally:
+        shutdown.set()
+        speech_worker.join(timeout=2.0)
 
 
 if __name__ == "__main__":
