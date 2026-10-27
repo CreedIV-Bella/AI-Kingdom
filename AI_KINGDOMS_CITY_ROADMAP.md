@@ -189,3 +189,54 @@ The new voice work (still awaiting the user's Minecraft test):
 Compatibility warning: the modpack 'MineColonies – Create & Conquer' has
 multiple released versions for 1.20.1, and newer versions may have additional
 logistics add-ons. Never assume a particular installed MineColonies build.
+
+## 2026-10-27 – first real MineColonies read-only adapter
+
+Tested installation versions reported by `/aibots colony probe`:
+- **MineColonies** `1.20.1-1.1.1278-snapshot`
+- **Structurize** `1.20.1-1.0.818`
+- **Create** `6.0.8`
+
+The exact source tag for MineColonies has been checked:
+`v1.20.1-1.1.1278-snapshot`, including `IColonyManager`,
+`IColony`, `ICitizenManager`, `IWorkManager`, and `IWorkOrder`.
+
+**New in code (not yet game-tested):**
+- `MineColoniesBridge.status` uses those exact public server API method names via
+  read-only reflection. It has no new compile-time mod dependency.
+- `/aibots colony status` reads a nearby registered colony: name/ID,
+  location, current/capacity population, registered building count, builder
+  huts, Builder jobs and real MineColonies work order status.
+- Natural question `/ask Aldric, hur går det med byggarna?` is routed to the
+  same source of truth without a generative model inventing job progress.
+- The bridge **never places blocks or writes work orders**. Integration still
+  needs player confirmation and a dedicated typed MineColonies work-order
+  adapter before any actual city construction is delegated.
+
+### Test in a backed-up world
+
+```cmd
+cd /d C:\Users\johan\AI-Kingdom
+git pull --ff-only
+cd forge
+gradlew.bat clean build
+```
+
+After replacing the previous JAR and launching Minecraft:
+1. Stand within/near the MineColonies town hall or right-click Aldric near it.
+2. Run `/aibots colony status`. Expect noninvented colony and Builder counts,
+   and any currently registered real work orders.
+3. Ask `/ask Aldric, hur går det med byggarna?` and compare its answer
+   with `/aibots colony status` (both should read the same data).
+4. If the adapter cannot find a registered colony, go closer to the Town Hall.
+   An abandoned vanilla village populated with workers is not necessarily
+   registered as a MineColonies colony; check the Town Hall block.
+5. Save/restart and verify Aldric's previous voice and movement tests still pass.
+
+The next feature will **not** be arbitrary building control: implement a
+safe, API-supported, audit-logged `WorkOrder` bridge for a SINGLE approved
+blueprint, then generalize. User requests broad autonomy, which should be
+implemented with a snapshot/rollback strategy and a restricted region, not
+unrestricted chat-to-command execution.
+
+Reference: https://github.com/ldtteam/minecolonies/tree/v1.20.1-1.1.1278-snapshot
