@@ -3,6 +3,8 @@ package com.aibots.common.entity;
 import com.aibots.common.ai.WorldFactGuard;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -25,6 +27,8 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
 import java.util.Locale;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 /**
  * An AI Kingdoms citizen with a persistent name and role-playing identity.
@@ -37,6 +41,10 @@ public class AiBotEntity extends PathfinderMob {
     private static final String ROLE_KEY = "AIKingdomsRole";
     private static final String PERSONALITY_KEY = "AIKingdomsPersonality";
     private static final String INITIALIZED_KEY = "AIKingdomsIdentityInitialized";
+    private static final String DIALOGUE_KEY = "AIKingdomsDialogue";
+    private static final int MAX_DIALOGUE_LINES = 12;
+    private static final int MAX_LINE_LENGTH = 360;
+    private final Deque<String> dialogue = new ArrayDeque<>();
 
     private static final String[] FIRST_NAMES = {
             "Silas", "Aldric", "Edmund", "Cedric", "Valerius", "Elara",
@@ -254,6 +262,44 @@ public class AiBotEntity extends PathfinderMob {
         return identity != null ? identity : WorldFactGuard.replyIfUnknown(message);
     }
 
+    /** Only the last six conversation exchanges are retained by this NPC.
+     * Dialogue is persisted with the entity NBT and is NOT a database of facts. */
+    public void rememberExchange(String user, String reply) {
+        if (user == null || reply == null || user.isBlank() || reply.isBlank()
+                || reply.startsWith("Request failed:")
+                || reply.startsWith("API error ")) {
+            return;
+        }
+        appendDialogue("Spelaren", user);
+        appendDialogue(botName(), reply);
+    }
+
+    private void appendDialogue(String who, String content) {
+        String clean = content.replace('\\n', ' ').replace('\\r', ' ').strip();
+        if (clean.length() > MAX_LINE_LENGTH) {
+            clean = clean.substring(0, MAX_LINE_LENGTH);
+        }
+        dialogue.addLast(who + ": " + clean);
+        while (dialogue.size() > MAX_DIALOGUE_LINES) {
+            dialogue.removeFirst();
+        }
+    }
+
+    public String messageWithHistory(String current) {
+        if (dialogue.isEmpty()) {
+            return current;
+        }
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("TIDIGARE SAMTAL (endast konversationsminne, INTE verifierade speldata).\\n");
+        for (String line : dialogue) {
+            prompt.append(line).append('\\n');
+        }
+        prompt.append("SLUT PÅ TIDIGARE SAMTAL.\\n")
+                .append("Svara på senaste frågan och håll samma personlighet.\\n")
+                .append("SENASTE FRÅGA: ").append(current);
+        return prompt.toString();
+    }
+
     public String botName() {
         Component name = getCustomName();
         return name != null ? name.getString() : "AI Bot";
@@ -296,6 +342,11 @@ public class AiBotEntity extends PathfinderMob {
         tag.putString(ROLE_KEY, role);
         tag.putString(PERSONALITY_KEY, personality);
         tag.putBoolean(INITIALIZED_KEY, identityInitialized);
+        ListTag history = new ListTag();
+        for (String line : dialogue) {
+            history.add(StringTag.valueOf(line));
+        }
+        tag.put(DIALOGUE_KEY, history);
         tag.putInt(SKIN_KEY, getSkinVariant());
         tag.putString(MOVE_MODE_KEY, moveMode.name());
         if (followPlayerUUID != null) {
@@ -318,6 +369,16 @@ public class AiBotEntity extends PathfinderMob {
             personality = tag.getString(PERSONALITY_KEY);
         }
         identityInitialized = tag.getBoolean(INITIALIZED_KEY);
+        dialogue.clear();
+        ListTag history = tag.getList(DIALOGUE_KEY, 8);
+        for (int i = Math.max(0, history.size() - MAX_DIALOGUE_LINES);
+                i < history.size(); i++) {
+            String line = history.getString(i);
+            if (!line.isBlank()) {
+                dialogue.addLast(line.substring(0, Math.min(line.length(),
+                        MAX_LINE_LENGTH + 100)));
+            }
+        }
         entityData.set(DATA_SKIN_VARIANT, tag.contains(SKIN_KEY, 3)
                 ? Math.floorMod(tag.getInt(SKIN_KEY), 4)
                 : Math.floorMod(getUUID().hashCode(), 4));
