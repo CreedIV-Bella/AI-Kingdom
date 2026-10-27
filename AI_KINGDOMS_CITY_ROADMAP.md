@@ -240,3 +240,45 @@ implemented with a snapshot/rollback strategy and a restricted region, not
 unrestricted chat-to-command execution.
 
 Reference: https://github.com/ldtteam/minecolonies/tree/v1.20.1-1.1.1278-snapshot
+
+## 2026-10-27 — First write-enabled MineColonies bridge
+
+New (unbuilt/untested in the modpack): authorized reprioritization of a
+real *existing unclaimed* work order via MineColonies' WorkManager.
+Verified from source tag v1.20.1-1.1.1278-snapshot:
+- IWorkOrder.getPriority()/setPriority(int).
+- WorkManager.getOrderedList() sorts by **decreasing** priority.
+- IWorkManager.setDirty(true), IColony.markDirty().
+- MineColonies permissions Action.MANAGE_HUTS via IPermissions.hasPermission(Player, Action).
+
+Runtime bridge action:
+- /aibots colony prioritize 12 (requires Aldric selected).
+- /ask Aldric, prioritera arbetsorder 12.
+- /ask Aldric, kan du prioritera vakttornet?
+
+The named-guard-tower order is discovered by inspecting actual currently
+unclaimed work orders and matching localized/English displayed names.
+It is NOT hardcoded to Lakeside's work order ID, which can change.
+The code refuses ambiguous guard-tower matches, invalid IDs, already-claimed
+orders and insufficient MineColonies player permissions.
+It sets a new uniquely highest priority, marks the work manager and colony dirty,
+and includes actual numeric priorities in the /aibots colony status report.
+Most important: this does **NOT** create structures, teleport builders,
+abort ongoing jobs or guarantee an available worker/resource stock.
+The first practical test should use Lakeside's earlier waiting Guard Tower #12,
+only if it still exists and remains unclaimed.
+
+Safety: test in a BACKUP world, and verify the work order priority in the
+Town Hall interface and /aibots colony status. You can restore priorities
+manually in MineColonies' Town Hall work-orders tab.
+
+Run standalone Java parser tests with JDK 17:
+    cd /d C:\Users\johan\AI-Kingdom
+    mkdir build-test
+    javac -encoding UTF-8 -d build-test common\src\main\java\com\aibots\common\ai\ColonyPriorityIntent.java common\src\test\java\com\aibots\common\ai\ColonyPriorityIntentSelfTest.java
+    java -cp build-test com.aibots.common.ai.ColonyPriorityIntentSelfTest
+
+Expected: 12 MineColonies priority intent tests passed.
+
+These tests prove parsing only. They do not compile the Forge mod or verify
+MineColonies changes until the user runs gradlew clean build and tests in-game.
