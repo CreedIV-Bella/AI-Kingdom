@@ -95,3 +95,52 @@ gradlew.bat clean build
 ```
 
 Then close Minecraft and replace the old test jar in `mods/` with the new output from `forge/build/libs/`. Verify Swedish letters, both real-state questions, and a hypothetical strategy prompt. Keep the world backup and keep only one `aibots` jar loaded.
+
+## v0.3 preview – medieval skins + actual Minecraft actions
+
+**In progress, NOT yet compiled/tested in the modpack.**
+
+### New features
+
+- Four `64×64` classic-model player-skin textures: royal, artisan, guard, scholar.
+- Each AI bot has a deterministic, separately persisted 0–3 skin variant synchronized to the client with `SynchedEntityData`. Old saved bots are assigned a stable variant derived from UUID without changing their name.
+- Actual server-side pathfinding using Minecraft `Goal` and `PathNavigation`; not a fictional AI promise:
+  - `/aibots follow` — follow the selected player (same dimension).
+  - `/aibots stay` — stop and stay at current location.
+  - `/aibots wander` — walk around using vanilla random-stroll navigation.
+  - `/aibots go ~5 ~ ~5` — walk towards the specified coordinates (relative to **player's** position).
+  - `/aibots status` — show the saved movement mode and latest status.
+  - `/aibots inspect` — count a few kinds of *real nearby blocks* around the NPC, with strict radius and without claiming knowledge of the whole village.
+- Follow orders and move modes are stored in NBT; the target player must be online and in the same dimension. NPCs do not teleport. Pathfinding can fail on walls, water, closed doors, unloaded chunks, or long distances.
+
+### Test this separately on a copied world
+
+```cmd
+cd /d C:\Users\johan\AI-Kingdom
+git pull --ff-only
+cd forge
+gradlew.bat clean build
+```
+
+Shut down Minecraft and replace the previous test JAR in the copied CurseForge profile. Keep **only one** `aibots` JAR.
+
+1. Spawn several NPCs and verify that different medieval skins render correctly.
+2. Save/reopen the world and confirm the selected NPC's skin and name persist.
+3. Right-click an NPC and run `/aibots who`.
+4. Run `/aibots follow`; walk a few blocks on relatively flat terrain. Check it really moves.
+5. Run `/aibots stay` and confirm it stops.
+6. Try `/aibots go ~5 ~ ~5` and inspect `/aibots status`. Destination is limited to 96 blocks from the bot and must be in a loaded chunk. If navigation fails, the status should report the obstruction.
+7. Lead the NPC to the village by `/aibots follow`, then use `/aibots stay` and `/aibots inspect`. The inspection checks only 8 blocks horizontally and 3 vertically, not the whole village and not MineColonies internal records.
+8. Inspect the game logs if it crashes or movement does not work.
+
+### What is *not* implemented
+
+- No placing blocks, digging, repairing houses, assigning MineColonies worker jobs, construction using schematics, or Create machinery control yet. These need carefully validated bridges to game/mod APIs and actual inventory consumption.
+- No free-form AI action planning/execution yet. These movement commands are real but explicitly selected by the player.
+- The skins are simple hand-authored pixel-art prototypes, not yet textured armor/role-consistent cosmetics.
+
+### Local Swedish voice prototype
+
+An experimental Windows script is available in `voice/`. Read `voice/README.md` for optional setup. F9 push-to-talk turns Swedish speech into `/ask` or approved `/aibots` commands locally using faster-whisper. It is **input only**; no spoken NPC response yet. For future voice **output**, plan to use local Piper TTS with Swedish voice packs, choosing voice by persisted NPC identity.
+
+Once the above build and gameplay tests pass, move the verified code out of the draft PR and continue with role-based actions and MineColonies integration.
