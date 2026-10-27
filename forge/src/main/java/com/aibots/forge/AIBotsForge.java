@@ -62,7 +62,9 @@ public class AIBotsForge {
                         .executes(this::inspectCreate)))
                 .then(Commands.literal("colony")
                     .then(Commands.literal("probe")
-                        .executes(this::colonyProbe)))
+                        .executes(this::colonyProbe))
+                    .then(Commands.literal("status")
+                        .executes(this::colonyStatus)))
                 .then(Commands.literal("go")
                     .then(Commands.argument("position", Vec3Argument.vec3())
                         .executes(this::go)))
@@ -230,6 +232,20 @@ public class AIBotsForge {
             result.append(modId).append("=").append(version).append("; ");
         }
         ctx.getSource().sendSuccess(() -> Component.literal(result.toString()), false);
+        return 1;
+    }
+
+    private int colonyStatus(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        ServerPlayer player;
+        try {
+            player = ctx.getSource().getPlayerOrException();
+        } catch (Exception e) {
+            ctx.getSource().sendFailure(Component.literal("Bara spelare kan läsa kolonistatus."));
+            return 0;
+        }
+        AiBotEntity bot = PlayerConversation.getTarget(player);
+        String report = MineColoniesBridge.status(player, bot);
+        player.sendSystemMessage(Component.literal(report).withStyle(ChatFormatting.AQUA));
         return 1;
     }
 
