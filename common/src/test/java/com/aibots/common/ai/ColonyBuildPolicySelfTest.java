@@ -18,7 +18,13 @@ public final class ColonyBuildPolicySelfTest {
         check(a.overlaps(new ColonyBuildPolicy.Footprint(-2, -2, 8, 8), 3), "overlap negative coords");
         check(a.overlaps(new ColonyBuildPolicy.Footprint(3, 0, 5, 5), 3), "clearance");
         check(!a.overlaps(new ColonyBuildPolicy.Footprint(4, 0, 5, 5), 3), "separated sites");
-        System.out.println("10 colony build policy tests passed.");
+        check(ColonyBuildPolicy.canQueue(6, 6, "residence", true, false), "full colony reserves housing slot");
+        check(!ColonyBuildPolicy.canQueue(7, 6, "residence", true, false), "emergency slot remains bounded");
+        check(!ColonyBuildPolicy.canQueue(6, 6, "residence", true, true), "no extra slot for duplicate housing order");
+        check(!ColonyBuildPolicy.canQueue(6, 6, "miner", true, false), "other projects cannot use housing slot");
+        check(!ColonyBuildPolicy.canQueue(6, 6, "residence", false, false), "no emergency when housing available");
+        check(ColonyBuildPolicy.canQueue(5, 6, "miner", true, true), "normal queue still handles supplies");
+        System.out.println("16 colony build policy tests passed.");
     }
     private static void check(boolean result, String message) {
         if (!result) throw new AssertionError(message);

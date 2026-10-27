@@ -12,6 +12,11 @@ public final class ColonyBuildPolicy {
         return Math.min(12, Math.max(3, builders * 2));
     }
 
+    /** Reserve one extra queue slot for housing when the colony is full, never an unlimited queue. */
+    public static boolean canQueue(int orders, int target, String type, boolean full, boolean housingOrderPending) {
+        return orders < target || full && !housingOrderPending && "residence".equals(type) && orders < target + 1;
+    }
+
     public static String nextMissing(int population, int capacity,
                                      Map<String, Integer> buildings,
                                      boolean residencePending) {

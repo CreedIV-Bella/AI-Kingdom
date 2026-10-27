@@ -89,6 +89,7 @@ public final class ColonyDevelopmentPlanner {
                 if (location instanceof BlockPos pos) occupiedWorkSites.add(pos);
                 residencePending |= isResidentialOrder(order);
             }
+            boolean housingOrderPending = residencePending;
             List<Candidate> eligible = new ArrayList<>();
             for (Object building : allBuildings) {
                 String type = buildingType(building);
@@ -140,12 +141,13 @@ public final class ColonyDevelopmentPlanner {
                         bestBuilderLevel, ((Number) invoke(prerequisite, "getMaxBuildingLevel")).intValue()));
             }
             int target = com.aibots.common.ai.ColonyBuildPolicy.queueTarget(counts.getOrDefault("builder", 0));
-            if (orders.size() >= target && prerequisite == null) {
+            final boolean full = residents >= capacity;
+            if (!com.aibots.common.ai.ColonyBuildPolicy.canQueue(orders.size(), target, "residence", full, housingOrderPending)
+                    && prerequisite == null) {
                 ColonyStewardController.cancelVisit(npc);
                 return new Result(false, "Byggkön har " + orders.size() + " projekt. Jag besöker byggplatserna och fyller på när kön minskar; målet är "
                         + target + " samtidiga eller väntande projekt.");
             }
-            final boolean full = residents >= capacity;
             eligible.sort(Comparator.comparingInt((Candidate c) -> {
                 try { return com.aibots.common.ai.ColonyBuildPolicy.priority(buildingType(c.building()), full); }
                 catch (ReflectiveOperationException e) { return 99; }
@@ -155,8 +157,9 @@ public final class ColonyDevelopmentPlanner {
             List<String> blockers = new ArrayList<>();
             for (Candidate candidate : eligible) {
                 boolean isPrerequisite = candidate.building() == prerequisite;
-                if (((Map<?, ?>) invoke(work, "getWorkOrders")).size() >= target && !isPrerequisite) continue;
                 String type = buildingType(candidate.building());
+                if (!isPrerequisite && !com.aibots.common.ai.ColonyBuildPolicy.canQueue(
+                        ((Map<?, ?>) invoke(work, "getWorkOrders")).size(), target, type, full, housingOrderPending)) continue;
                 if (candidate.level() > 0 && type.equals("residence") && residencePending) continue;
                 String problem = builderProblem(colony, candidate.building());
                 if (!problem.isEmpty()) {
@@ -164,10 +167,10 @@ public final class ColonyDevelopmentPlanner {
                             + (problem.equals("nivå") ? "behöver bemannat byggarhus på rätt nivå" : "behöver byggare inom räckhåll"));
                     continue;
                 }
-                String receipt = queue(player, colony, work, candidate.building(), npc, isPrerequisite);
+                String receipt = queue(player, colony, work, candidate.building(), npc, isPrerequisite || full && type.equals("residence"));
                 if (receipt == null) { rejected++; continue; }
                 queued.add(receipt);
-                if (type.equals("residence")) residencePending = true;
+                if (type.equals("residence")) { residencePending = true; housingOrderPending = true; }
             }
             Map<String, Integer> planningCounts = new java.util.HashMap<>(counts);
             var deferred = npc.getPersistentData().getCompound("AIKingdomsDeferredBuilds");
@@ -186,12 +189,13 @@ public final class ColonyDevelopmentPlanner {
                 ColonyStewardController.cancelVisit(npc);
             }
             String nextReport = "";
-            if (((Map<?, ?>) invoke(work, "getWorkOrders")).size() < target && next != null) {
+            if (next != null && com.aibots.common.ai.ColonyBuildPolicy.canQueue(
+                    ((Map<?, ?>) invoke(work, "getWorkOrders")).size(), target, next, full, housingOrderPending)) {
                 ColonyBlueprintPlacement.Placement placement =
                         ColonyBlueprintPlacement.place(player, colony, next, allBuildings, npc);
                 nextReport = placement.description();
                 if (placement.building() != null) {
-                    String receipt = queue(player, colony, work, placement.building(), npc, false);
+                    String receipt = queue(player, colony, work, placement.building(), npc, full && next.equals("residence"));
                     if (receipt != null) queued.add(receipt);
                     else nextReport += ". Tomten finns, men MineColonies skapade ingen byggorder. "
                             + "Kontrollera Builder-nivå, avstånd och forskningskrav. Jag försöker med samma tomt nästa gång.";
@@ -201,6 +205,8 @@ public final class ColonyDevelopmentPlanner {
                     "Verkliga MineColonies-ordrar i byggkön: " + String.join("; ", queued) + ".";
             if (rejected > 0) report += " " + rejected
                     + " projekt väntar efter nekad beställning eller under återförsökspaus; kontrollera forskningskrav och byggarnas nivå/avstånd.";
+            if (full) report += " Bostadsprioritet: kolonin är full (" + residents + "/" + capacity
+                    + "). Jag prioriterar bostadsbygge eller uppgradering och nödvändigt byggarhus.";
             if (!blockers.isEmpty()) report += " Väntar: " + String.join("; ", blockers) + ".";
             if (!nextReport.isEmpty()) report += " " + nextReport;
             if (queued.isEmpty() && next == null && rejected == 0) report +=
