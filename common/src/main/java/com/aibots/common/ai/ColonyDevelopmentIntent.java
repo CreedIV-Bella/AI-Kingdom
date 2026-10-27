@@ -28,7 +28,7 @@ public final class ColonyDevelopmentIntent {
 
         boolean city = find(s,
                 "\\b(staden|stadens|byn|kolonin|lakeside|bostäder|"
-                        + "bostadsbrist|byggprojekt|byggbehov|stadsplanering)\\b");
+                        + "bostadsbrist|byggprojekt|byggbehov|stadsplanering|stadsplaneringen)\\b");
         city = city || find(s, "\\b(se vad vi behöver och bygg det|"
                 + "bygg det vi behöver|se vad som behövs och bygg|"
                 + "bygg det som behövs)\\b");
@@ -42,7 +42,7 @@ public final class ColonyDevelopmentIntent {
                 "\\b(bygg|bygga|bygg ut|utveckla|utveckling|"
                         + "planera|ordna|se vad|undersök|fixa)\\b");
 
-        if (city && stop && (authorization || find(s, "\\b(stadsplanering|bygga|utveckla)\\b"))) {
+        if (city && stop && (authorization || find(s, "\\b(stadsplanering|stadsplaneringen|bygga|utveckla)\\b"))) {
             return Action.AUTO_OFF;
         }
         if (city && authorization && build) {
