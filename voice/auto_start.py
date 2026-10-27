@@ -82,7 +82,9 @@ def is_minecraft_client(info: dict) -> bool:
         "--gamedir" in cmd
         and ("--username" in cmd or "forgeclient" in cmd
              or "net.minecraft.client.main.main" in cmd)
-    ) or "net.minecraft.client.main.main" in cmd
+    ) or "net.minecraft.client.main.main" in cmd or (
+        "--launchtarget" in cmd and "forgeclient" in cmd
+    )
 
 
 def is_voice_process(info: dict) -> bool:
@@ -176,6 +178,23 @@ def acquire_lock():
     return handle
 
 
+def print_diagnostics() -> None:
+    """Manually check detection from a visible CMD without starting services."""
+    configure_log()
+    processes = current_processes()
+    game = [p for p in processes if is_minecraft_client(p)]
+    voice = [p for p in processes if is_voice_process(p)]
+    ollama_process = any(is_ollama_process(p) for p in processes)
+    print("AI Kingdoms: autostart-diagnos")
+    print("Minecraft hittat:", "JA" if game else "NEJ")
+    print("Ollama API redo:", "JA" if ollama_is_healthy() else "NEJ")
+    print("Ollama-process:", "JA" if ollama_process else "NEJ")
+    print("Whisper/Piper-process:", "JA" if voice else "NEJ")
+    print("Supervisorlogg:", LOG)
+    print("Minecraft måste ha startat världen via CurseForge/Forge.")
+    print("Inställningar: Naga 11 = Ctrl+Shift+F8; Naga 12 = Ctrl+Shift+F9.")
+
+
 def main() -> None:
     configure_log()
     lock = acquire_lock()
@@ -232,4 +251,7 @@ def main() -> None:
 if __name__ == "__main__":
     if sys.platform != "win32":
         raise SystemExit("The AI Kingdoms supervisor only supports Windows.")
-    main()
+    if "--check" in sys.argv:
+        print_diagnostics()
+    else:
+        main()
