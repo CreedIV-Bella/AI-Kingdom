@@ -82,7 +82,7 @@ public class AIBotsForge {
                         .then(Commands.literal("on")
                             .executes(ctx -> setColonyAuto(ctx, true)))
                         .then(Commands.literal("off")
-                            .executes(ctx -> setColonyAuto(ctx, false))))
+                            .executes(ctx -> setColonyAuto(ctx, false)))))
                 .then(Commands.literal("go")
                     .then(Commands.argument("position", Vec3Argument.vec3())
                         .executes(this::go)))
