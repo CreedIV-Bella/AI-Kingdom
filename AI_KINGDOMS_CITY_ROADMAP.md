@@ -1,0 +1,150 @@
+# AI Kingdoms – Aldric as autonomous city steward
+
+Updated 2026-10-27. This is the target architecture and a stepwise implementation plan,
+not a claim that MineColonies integration or AI city automation already works.
+
+## Goal
+
+Aldric Ravencrest becomes the city steward who can converse in Swedish, speak
+with a consistent local voice, read verified colony state, propose expansions,
+plan what to build and where, delegate to actual MineColonies workers, and
+report real progress. The player remains the sovereign who sets priorities,
+permission boundaries and approves major changes.
+
+## Separate responsibilities
+
+### 1. NPC conversational identity
+Persistent UUID/name/role, bounded per-NPC memory, chosen Swedish TTS voice.
+Model may narrate personality, but may not invent factual world state.
+
+### 2. Read-only world facts (server authoritative)
+Minecraft/Forge adapter: nearby blocks, terrain, protected areas, chunks,
+pathing, villagers. MineColonies adapter (to be implemented against the
+actual installed 1.20.1 mod version): colony ID, claimed area, citizens/jobs,
+registered buildings/huts, builder work orders and current states, inventory
+requests/shortages and research where available.
+
+Never ask an LLM to guess an integer already obtainable from server API.
+
+### 3. City planner
+Aldric receives a structured snapshot and a registry of approved building
+blueprints with footprints, material costs, roles and requirements. He outputs
+**proposals**, not free-form executable commands.
+
+Example proposal:
+```json
+{
+  "kind": "propose_building",
+  "blueprint_id": "ai-kingdoms/decoration/castle/north_tower_1",
+  "target": {"x": 160, "y": 72, "z": -210},
+  "rotation": 90,
+  "reason": "Complete the northern defense line"
+}
+```
+
+The command validator checks blueprint IDs, buildable colony area, terrain,
+footprint overlaps, village paths, height limit, budgets, chunk loading,
+protected blocks and other mod restrictions. Rejected proposals include a
+real explanation and may be re-planned.
+
+### 4. Approval & permissions
+
+- **Observer** (default): conversation, inspect, propose.
+- **Supervisor**: issue low-impact worker requests from a whitelist
+  (e.g. inspection or hauling) in validated colony territory.
+- **City steward**: auto-queue vetted low-risk buildings under a player-set
+  material/resource budget, max simultaneous jobs and area limit.
+- **Royal decree**: ask for explicit player approval for demolition,
+  huge castle phases, expensive construction and military acts.
+
+No AI-controlled commands or world edits are considered successful until the
+underlying Minecraft/MineColonies work order or block state confirms success.
+
+### 5. Execute and observe
+MineColonies work order adapter (not yet built) creates legitimate tasks in
+the colony system and leaves actual block placement to Builders; maintain
+an execution ledger containing order ID, citizen/builder ID if available,
+blueprint, coordinates, requested resources, status and confirmations.
+No fabricated progress or "it's done" before reading real completion.
+
+### 6. Building catalog and schematic conversion
+
+Two different concepts:
+
+- Create's `.nbt` schematic (Create tools/Schematicannon).
+- Structurize's `.blueprint` in a MineColonies style pack.
+- The third-party **CreateColonies** compatibility mod (verify installed
+  version and dependencies in the actual modpack first) provides a
+  **Schematic Workbench** to convert between these formats on Forge 1.20.1.
+
+Official MineColonies docs also describe creating a Structurize blueprint
+directly with Scan Tool, placing it through Build Tool, and having a Builder
+construct it with supplied materials.
+
+`AI-Kingdoms` style pack plan:
+
+```
+blueprints/AI-Kingdoms/pack.json
+blueprints/AI-Kingdoms/decorations/castle/gatehouse.blueprint
+blueprints/AI-Kingdoms/decorations/castle/north_tower.blueprint
+blueprints/AI-Kingdoms/decorations/castle/north_wall.blueprint
+blueprints/AI-Kingdoms/decorations/castle/great_hall.blueprint
+blueprints/AI-Kingdoms/decorations/castle/throne_hall.blueprint
+blueprints/AI-Kingdoms/decorations/castle/barracks_wing.blueprint
+```
+
+This illustrates the target catalog structure; no actual blueprints or
+`pack.json` are committed yet. Study a real style pack for required metadata.
+
+For functional MineColonies buildings, scans need the proper **hut block
+anchor**, and special blocks/tags if required. Ordinary castle towers,
+walls and halls are better as decorations unless they serve a genuine
+functional hut purpose.
+
+**Mega-castles should be modular**: multiple blueprints/work orders keep
+paths, resource lists, ownership, expansion, upgrades and troubleshooting
+manageable. Respect Structurize's configured schematic block limits and
+concurrent Builders' actual capabilities.
+
+## Next milestones
+
+1. **Voice I/O**: verify timestamped local voice inbox (Ctrl+Alt+V).
+   Once it works, add offline Swedish Piper speech output with a persisted
+   voice identifier per NPC (Aldric can use a male voice, other citizens can
+   have different voices; respect model licenses).
+2. **MineColonies integration audit**: pin installed API/version, identify
+   colony/worker/work-order classes and dependency setup for ForgeGradle.
+   Start with read-only facts and `/aibots colony status`.
+3. **City blueprint pack**: build one decorative watchtower in a separate
+   Creative world, scan it, import as Structurize blueprint, and manually
+   demonstrate a MineColonies Builder building it from materials.
+4. **Verified city proposals**: NPC proposes a valid blueprint, placement,
+   reason, material cost, and explicit player approval. First run with
+   a small building and no automatic placement.
+5. **Work-order bridge**: create validated real colony work orders and
+   track them until completion or error; AI may retry after inspection.
+6. **Automation policy**: budgets, protected areas, limits and daily plans.
+7. **Mega-castle project manager**: modular plans, tower/wall/phased build,
+   materials and builder task assignment.
+8. **Rival kingdom / diplomacy / battles** after economic simulation works.
+
+## Technical/operational limits
+
+- Keep LLM requests asynchronous and bounded; few "brains", many
+  low-cost in-game citizens.
+- Never force-load arbitrary remote chunks to simulate work.
+- Persist pending jobs carefully, account for saved/loaded world state
+  and server-authoritative mutations.
+- Integrate with mod versions **actually present** in the CurseForge pack,
+  not guessed interfaces from a newer MineColonies release.
+- Back up worlds and modpack before testing new builders or block editing.
+- Keep Apache-2.0 notices and check licensing of third-party schematics,
+  textures and TTS voice models before distributing assets.
+
+## References
+
+- https://minecolonies.com/wiki/tutorials/schematics/
+- https://minecolonies.com/wiki/tutorials/schematics/style-packs/
+- https://minecolonies.com/wiki/items/sceptersteel/
+- https://www.curseforge.com/minecraft/mc-mods/createcolonies
+- https://www.curseforge.com/minecraft/mc-mods/createcolonies/files/7134076
