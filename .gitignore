@@ -30,3 +30,8 @@ aibots-proxy
 # --- OS ---
 Thumbs.db
 .DS_Store
+
+# --- Local voice prototype ---
+voice/.venv/
+__pycache__/
+*.pyc
