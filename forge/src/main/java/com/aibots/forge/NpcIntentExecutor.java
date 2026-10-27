@@ -5,6 +5,9 @@ import com.aibots.common.entity.AiBotEntity;
 import com.aibots.common.entity.CreateInspection;
 import com.aibots.common.entity.VillageInspection;
 import net.minecraft.server.level.ServerPlayer;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The only effects of natural text are these explicit server-side actions.
@@ -19,6 +22,31 @@ public final class NpcIntentExecutor {
         if (player == null || bot == null || bot.level() != player.level()) {
             return null;
         }
+        // A natural, affirmative order may affect ONLY a real existing work order.
+        // Other freeform sentences still go to conversation, never to a shell.
+        String normalized = speech == null ? "" : speech.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}# ]+", " ")
+                .replaceAll("\\s+", " ").trim();
+        boolean prioritization = Pattern.compile(
+                "\\b(prioritera|prioritet åt|högst prioritet)\\b")
+                .matcher(normalized).find();
+        boolean negated = Pattern.compile(
+                "\\b(inte|aldrig|låt bli|utan att|om vi|om du|tänk om|"
+                        + "förklara|varför|hur gör)\\b")
+                .matcher(normalized).find();
+        if (prioritization && !negated) {
+            Matcher order = Pattern.compile(
+                    "\\b(?:arbetsorder|byggorder|order|nummer)\\s*#?\\s*(\\d{1,6})\\b")
+                    .matcher(normalized);
+            if (order.find()) {
+                int orderId = Integer.parseInt(order.group(1));
+                return MineColoniesBridge.prioritize(player, bot, orderId);
+            }
+            if (normalized.matches(".*\\b(?:vakttorn|vakttornet|guard\\s*tower)\\b.*")) {
+                return MineColoniesBridge.prioritizeGuardTower(player, bot);
+            }
+        }
+
         NpcNaturalIntent.Action action = NpcNaturalIntent.parse(speech);
         if (action == null) return null;
 
