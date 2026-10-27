@@ -278,10 +278,14 @@ public final class ModNetwork {
                     .withStyle(ChatFormatting.YELLOW));
         }
 
+        String contextualMessage = target != null ? target.messageWithHistory(message) : message;
         player.sendSystemMessage(Component.literal("Thinking...").withStyle(ChatFormatting.GRAY));
         AiBotEntity speaker = target;
-        AiService.ask(system, message).thenAccept(reply ->
+        AiService.ask(system, contextualMessage).thenAccept(reply ->
                 player.server.execute(() -> {
+                    if (speaker != null && speaker.isAlive()) {
+                        speaker.rememberExchange(message, reply);
+                    }
                     callback.accept(prefix, reply);
                     speakNpc(player, speaker, reply);
                 }));
