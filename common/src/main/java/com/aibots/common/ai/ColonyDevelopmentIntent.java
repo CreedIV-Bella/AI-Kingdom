@@ -29,6 +29,9 @@ public final class ColonyDevelopmentIntent {
         boolean city = find(s,
                 "\\b(staden|stadens|byn|kolonin|lakeside|bostäder|"
                         + "bostadsbrist|byggprojekt|byggbehov|stadsplanering)\\b");
+        city = city || find(s, "\\b(se vad vi behöver och bygg det|"
+                + "bygg det vi behöver|se vad som behövs och bygg|"
+                + "bygg det som behövs)\\b");
         boolean stop = find(s,
                 "\\b(pausa|stoppa|avsluta|stäng av|sluta)\\b");
         boolean authorization = find(s,
