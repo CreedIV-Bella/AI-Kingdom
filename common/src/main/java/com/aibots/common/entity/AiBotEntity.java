@@ -40,6 +40,10 @@ public class AiBotEntity extends PathfinderMob {
     private static final String ROLE_KEY = "AIKingdomsRole";
     private static final String PERSONALITY_KEY = "AIKingdomsPersonality";
     private static final String INITIALIZED_KEY = "AIKingdomsIdentityInitialized";
+    private static final String STEWARD_ENABLED_KEY = "AIKingdomsStewardEnabled";
+    private static final String STEWARD_OWNER_KEY = "AIKingdomsStewardOwner";
+    private boolean stewardEnabled;
+    private UUID stewardOwnerUUID;
     private static final String DIALOGUE_KEY = "AIKingdomsDialogue";
     private static final int MAX_DIALOGUE_LINES = 12;
     private static final int MAX_LINE_LENGTH = 360;
@@ -199,6 +203,20 @@ public class AiBotEntity extends PathfinderMob {
         unreachableTicks = 0;
     }
 
+    /** Persistent opt-in. Only an authorized online colony owner drives auto-plans. */
+    public void setStewardEnabled(boolean enabled, UUID ownerUUID) {
+        stewardEnabled = enabled;
+        stewardOwnerUUID = enabled ? ownerUUID : null;
+    }
+
+    public boolean isStewardEnabled() {
+        return stewardEnabled && stewardOwnerUUID != null;
+    }
+
+    public UUID getStewardOwnerUUID() {
+        return stewardOwnerUUID;
+    }
+
     public String getTravelReport() {
         return travelReport;
     }
@@ -342,6 +360,10 @@ public class AiBotEntity extends PathfinderMob {
         super.addAdditionalSaveData(tag);
         tag.putString(ROLE_KEY, role);
         tag.putString(PERSONALITY_KEY, personality);
+        tag.putBoolean(STEWARD_ENABLED_KEY, stewardEnabled);
+        if (stewardOwnerUUID != null) {
+            tag.putUUID(STEWARD_OWNER_KEY, stewardOwnerUUID);
+        }
         tag.putBoolean(INITIALIZED_KEY, identityInitialized);
         ListTag history = new ListTag();
         for (String line : dialogue) {
@@ -368,6 +390,12 @@ public class AiBotEntity extends PathfinderMob {
         }
         if (tag.contains(PERSONALITY_KEY, 8)) {
             personality = tag.getString(PERSONALITY_KEY);
+        }
+        stewardEnabled = tag.getBoolean(STEWARD_ENABLED_KEY);
+        stewardOwnerUUID = tag.hasUUID(STEWARD_OWNER_KEY)
+                ? tag.getUUID(STEWARD_OWNER_KEY) : null;
+        if (stewardOwnerUUID == null) {
+            stewardEnabled = false;
         }
         identityInitialized = tag.getBoolean(INITIALIZED_KEY);
         dialogue.clear();
