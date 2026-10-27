@@ -19,6 +19,7 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.loading.FMLPaths;
+import net.minecraftforge.fml.ModList;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -59,6 +60,9 @@ public class AIBotsForge {
                 .then(Commands.literal("create")
                     .then(Commands.literal("inspect")
                         .executes(this::inspectCreate)))
+                .then(Commands.literal("colony")
+                    .then(Commands.literal("probe")
+                        .executes(this::colonyProbe)))
                 .then(Commands.literal("go")
                     .then(Commands.argument("position", Vec3Argument.vec3())
                         .executes(this::go)))
@@ -210,6 +214,22 @@ public class AIBotsForge {
         String report = VillageInspection.inspect(bot);
         ctx.getSource().sendSuccess(() ->
                 Component.literal(bot.botName() + ": " + report), false);
+        return 1;
+    }
+
+    /**
+     * Diagnostics only. Before compiling against MineColonies we must know
+     * precisely which mod versions the player has installed in their modpack.
+     */
+    private int colonyProbe(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        StringBuilder result = new StringBuilder("AI Kingdoms modpack: ");
+        for (String modId : new String[]{"minecolonies", "structurize", "create"}) {
+            String version = ModList.get().getModContainerById(modId)
+                    .map(mod -> mod.getModInfo().getVersion().toString())
+                    .orElse("saknas");
+            result.append(modId).append("=").append(version).append("; ");
+        }
+        ctx.getSource().sendSuccess(() -> Component.literal(result.toString()), false);
         return 1;
     }
 
