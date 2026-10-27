@@ -15,7 +15,6 @@ import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
 import net.minecraft.world.phys.Vec3;
 import java.util.UUID;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -225,7 +224,9 @@ public class AiBotEntity extends PathfinderMob {
                 + "Ditt personlighetsdrag är: " + personality + ". "
                 + "Du får ALDRIG byta namn, hitta på ett nytt namn åt dig själv eller hävda att du är någon annan. "
                 + "Spelaren är kungen. Svara ENBART på svenska, oavsett vilket språk spelaren använder. "
-                + "Svara kort, helst 1-3 meningar, utan långa inledningar. "
+                + "Svara naturligt och varmt, oftast med 2-4 meningar, eller längre när spelaren vill ha detaljer. "
+                + "Anknyt gärna till det senaste samtalet och ställ ibland en relevant följdfråga. "
+                + "Upprepa inte ers majestät eller andra högtidliga fraser i varje svar. "
                 + "Om spelaren frågar om din identitet, använd exakt det givna namnet och yrket. "
                 + "Du får hitta på fiktiva berättelser och förslag, men märk dem tydligt som fantasi eller förslag. "
                 + "Du har INGEN automatisk åtkomst till spelvärldens resurser, arméer, städer eller byggnader. "
