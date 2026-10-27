@@ -42,7 +42,7 @@ public final class ColonyDevelopmentIntent {
                 "\\b(bygg|bygga|bygg ut|utveckla|utveckling|"
                         + "planera|ordna|se vad|undersök|fixa)\\b");
 
-        if (city && stop && (authorization || find(s, "\\b(stadsplanering|stadsplaneringen|bygga|utveckla)\\b"))) {
+        if (city && stop && (authorization || find(s, "\\b(stadsplanering|stadsplaneringen|bygga|utveckla|utveckling|utvecklingen)\\b"))) {
             return Action.AUTO_OFF;
         }
         if (city && authorization && build) {
