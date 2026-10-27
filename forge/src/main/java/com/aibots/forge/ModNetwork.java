@@ -277,11 +277,8 @@ public final class ModNetwork {
             }
             system = target.getPersonality();
         } else {
-            prefix = "[AI-assistent] ";
-            system = AiConfig.get().systemPrompt;
-            player.sendSystemMessage(Component.literal(
-                    "Ingen NPC vald. Högerklicka på en AI Bot eller använd /aibots who.")
-                    .withStyle(ChatFormatting.YELLOW));
+            callback.accept("[AI Kingdoms] ", "Ingen NPC vald. Högerklicka på en NPC eller använd /aibots select Aldric Ravencrest.");
+            return;
         }
 
         String contextualMessage = target != null ? target.messageWithHistory(message) : message;
