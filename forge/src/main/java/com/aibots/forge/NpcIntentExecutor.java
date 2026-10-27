@@ -31,8 +31,7 @@ public final class NpcIntentExecutor {
             }
             if (development == ColonyDevelopmentIntent.Action.AUTO_ON) {
                 bot.setStewardEnabled(true, player.getUUID());
-                return "Jag tar ansvar för stadens bostadsutveckling inom registrerade "
-                        + "MineColonies-tomter. " + ColonyDevelopmentPlanner.develop(player, bot).description();
+                return "Jag tar ansvar för stadens MineColonies-byggnader, tomter och byggkö. " + ColonyDevelopmentPlanner.develop(player, bot).description();
             }
             if (bot.getStewardOwnerUUID() != null
                     && !bot.getStewardOwnerUUID().equals(player.getUUID())) {

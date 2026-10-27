@@ -1,5 +1,7 @@
 # AI Kingdoms – development notes
 
+> Current MineColonies implementation and test instructions: [MINECOLONIES_STEWARD_TEST.md](MINECOLONIES_STEWARD_TEST.md). Older entries below are historical; the latest code is not yet Forge-compiled/game-tested.
+
 This repository is a fork of `devoffeed/ai-job-mod`. Original license and notices remain in place.
 
 ## v0.2 – persistent NPC identity (first iteration)

@@ -1,5 +1,7 @@
 # AI Kingdoms – Aldric as autonomous city steward
 
+> Current MineColonies implementation and test instructions: [MINECOLONIES_STEWARD_TEST.md](MINECOLONIES_STEWARD_TEST.md). Older entries below are historical; the latest code is not yet Forge-compiled/game-tested.
+
 Updated 2026-10-27. This is the target architecture and a stepwise implementation plan,
 not a claim that MineColonies integration or AI city automation already works.
 

@@ -43,6 +43,7 @@ public class AiBotEntity extends PathfinderMob {
     private static final String STEWARD_ENABLED_KEY = "AIKingdomsStewardEnabled";
     private static final String STEWARD_OWNER_KEY = "AIKingdomsStewardOwner";
     private boolean stewardEnabled;
+    private String stewardReport = "Ingen stadsplanering körd i denna session.";
     private UUID stewardOwnerUUID;
     private static final String DIALOGUE_KEY = "AIKingdomsDialogue";
     private static final int MAX_DIALOGUE_LINES = 12;
@@ -208,6 +209,10 @@ public class AiBotEntity extends PathfinderMob {
         stewardEnabled = enabled;
         stewardOwnerUUID = enabled ? ownerUUID : null;
     }
+
+    public void setStewardReport(String report) { stewardReport = report; }
+
+    public String getStewardReport() { return stewardReport; }
 
     public boolean isStewardEnabled() {
         return stewardEnabled && stewardOwnerUUID != null;

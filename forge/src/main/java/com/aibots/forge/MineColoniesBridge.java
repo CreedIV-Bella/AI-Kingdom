@@ -153,6 +153,9 @@ public final class MineColoniesBridge {
             }
             report.append(" Detta är en avläst serverrapport. ")
                     .append("Inga byggordrar har ändrats.");
+            if (bot != null) report.append(" Stadsförvaltning: ")
+                    .append(bot.isStewardEnabled() ? "aktiv" : "pausad")
+                    .append(". Senaste planering: ").append(bot.getStewardReport());
             return report.toString();
         } catch (ReflectiveOperationException
                  | RuntimeException | LinkageError exception) {

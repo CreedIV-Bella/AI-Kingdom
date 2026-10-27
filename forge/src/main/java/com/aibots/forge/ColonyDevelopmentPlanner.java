@@ -9,7 +9,6 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.fml.ModList;
 
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -17,17 +16,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * First cautious, WRITE-CAPABLE city planner for MineColonies 1.20.1-1.1.1278.
- *
- * It can choose and queue BUILD or UPGRADE using already-registered residence
- * hut positions, after checking housing capacity and pending work orders.
- * Never creates imaginary hut locations, places blocks, removes a building,
- * duplicates work orders or generates schematics. All actions execute on the
- * Minecraft server thread using MineColonies' normal IBuilding.requestUpgrade.
- *
- * A future Structurize blueprint placement adapter is needed before Aldric
- * can choose completely NEW housing locations or road layouts.
+/** Server-thread MineColonies city steward: queue existing projects, grow housing,
+ * discover missing essential buildings and place registered server blueprints.
+ * requestUpgrade is the authoritative BUILD/UPGRADE gate; success requires a new order ID.
  */
 public final class ColonyDevelopmentPlanner {
     private static final long MAX_DISTANCE_SQ = 128L * 128L;
@@ -54,6 +45,12 @@ public final class ColonyDevelopmentPlanner {
     }
 
     public static Result develop(ServerPlayer player, AiBotEntity npc) {
+        Result result = developNow(player, npc);
+        if (npc != null) npc.setStewardReport(result.description());
+        return result;
+    }
+
+    private static Result developNow(ServerPlayer player, AiBotEntity npc) {
         if (player == null || npc == null) {
             return new Result(false, "Jag måste prata med en vald NPC.");
         }
@@ -81,108 +78,119 @@ public final class ColonyDevelopmentPlanner {
             Object structureManager = invoke(colony, "getServerBuildingManager");
             Map<?, ?> buildings = (Map<?, ?>) invoke(structureManager, "getBuildings");
 
-            if (residents < capacity) {
-                return new Result(false, "Jag har undersökt staden: "
-                        + residents + " av " + capacity + " invånarplatser används. "
-                        + "Ingen akut bostadsbrist kan bekräftas. "
-                        + "Nästa steg är att ansluta ett kontrollerat katalogsystem "
-                        + "för vägar, lager och nya hus.");
-            }
-
-            // No duplicate residential construction: the user observed that
-            // Lakeside already has a queued Residence work order.
-            for (Object order : orders.values()) {
-                if (order != null && isResidentialOrder(order)) {
-                    return new Result(false, "Bostadskapaciteten är full (" + residents
-                            + "/" + capacity + "), men en Residence-arbetsorder finns "
-                            + "redan i MineColonies. Jag avvaktar den i stället för "
-                            + "att beställa samma arbete igen.");
-                }
-            }
-
+            List<Object> allBuildings = new ArrayList<>(buildings.values());
+            allBuildings.removeIf(java.util.Objects::isNull);
+            Map<String, Integer> counts = new java.util.HashMap<>();
             Set<BlockPos> occupiedWorkSites = new HashSet<>();
+            boolean residencePending = false;
             for (Object order : orders.values()) {
                 if (order == null) continue;
                 Object location = invoke(order, "getLocation");
                 if (location instanceof BlockPos pos) occupiedWorkSites.add(pos);
+                residencePending |= isResidentialOrder(order);
             }
-
             List<Candidate> eligible = new ArrayList<>();
-            for (Object building : buildings.values()) {
-                if (building == null) continue;
-                Object type = invoke(building, "getBuildingType");
-                Object resourceLocation = invoke(type, "getRegistryName");
-                String registry = String.valueOf(resourceLocation);
-                if (!registry.equals("minecolonies:residence")) continue;
-
+            for (Object building : allBuildings) {
+                String type = buildingType(building);
+                counts.merge(type, 1, Integer::sum);
                 BlockPos position = (BlockPos) invoke(building, "getPosition");
                 int currentLevel = ((Number) invoke(building, "getBuildingLevel")).intValue();
                 int maxLevel = ((Number) invoke(building, "getMaxBuildingLevel")).intValue();
-                if (currentLevel >= maxLevel || maxLevel < 1
-                        || occupiedWorkSites.contains(position)) {
-                    continue;
-                }
-
-                // Ensure the target structure/blueprint pack is registered.
+                if (type.equals("residence") && currentLevel == 0) residencePending = true;
+                if (occupiedWorkSites.contains(position) || currentLevel >= maxLevel) continue;
                 String pack = String.valueOf(invoke(building, "getStructurePack"));
                 String path = String.valueOf(invoke(building, "getBlueprintPath"));
-                if (pack.isBlank() || path.isBlank()
-                        || "null".equals(pack) || "null".equals(path)) {
-                    continue;
+                if (pack.isBlank() || path.isBlank() || pack.equals("null") || path.equals("null")) continue;
+                // Finish any existing registered project; upgrade housing only when capacity is full.
+                if (currentLevel == 0 || type.equals("residence") && residents >= capacity
+                        && !residencePending && Boolean.TRUE.equals(invoke(building, "isBuilt"))) {
+                    eligible.add(new Candidate(building, position, currentLevel, maxLevel));
                 }
-                // An upgrade should only be placed on a fully built residence,
-                // never on an incomplete or partially deconstructed structure.
-                if (currentLevel > 0 && !Boolean.TRUE.equals(invoke(building, "isBuilt"))) {
-                    continue;
+            }
+            int target = com.aibots.common.ai.ColonyBuildPolicy.queueTarget(counts.getOrDefault("builder", 0));
+            if (orders.size() >= target) return new Result(false,
+                    "Byggkön har " + orders.size() + " projekt. Jag fyller på när kön minskar; målet är "
+                            + target + " samtidiga eller väntande projekt.");
+            final boolean full = residents >= capacity;
+            eligible.sort(Comparator.comparingInt((Candidate c) -> {
+                try { return com.aibots.common.ai.ColonyBuildPolicy.priority(buildingType(c.building()), full); }
+                catch (ReflectiveOperationException e) { return 99; }
+            }).thenComparingInt(Candidate::level).thenComparing(c -> c.position().asLong()));
+            List<String> queued = new ArrayList<>();
+            int rejected = 0;
+            for (Candidate candidate : eligible) {
+                if (((Map<?, ?>) invoke(work, "getWorkOrders")).size() >= target) break;
+                String type = buildingType(candidate.building());
+                if (candidate.level() > 0 && residencePending) continue;
+                String receipt = queue(player, colony, work, candidate.building());
+                if (receipt == null) { rejected++; continue; }
+                queued.add(receipt);
+                if (type.equals("residence")) residencePending = true;
+            }
+            String next = com.aibots.common.ai.ColonyBuildPolicy.nextMissing(residents, capacity, counts, residencePending);
+            String nextReport = "";
+            if (((Map<?, ?>) invoke(work, "getWorkOrders")).size() < target && next != null) {
+                ColonyBlueprintPlacement.Placement placement =
+                        ColonyBlueprintPlacement.place(player, colony, next, allBuildings);
+                nextReport = placement.description();
+                if (placement.building() != null) {
+                    String receipt = queue(player, colony, work, placement.building());
+                    if (receipt != null) queued.add(receipt);
+                    else nextReport += ". Tomten finns, men MineColonies skapade ingen byggorder. "
+                            + "Kontrollera Builder-nivå, avstånd och forskningskrav. Jag försöker med samma tomt nästa gång.";
                 }
-
-                eligible.add(new Candidate(building, position, currentLevel, maxLevel));
             }
-            eligible.sort(Comparator.comparingInt(Candidate::level)
-                    .thenComparing(c -> c.position().asLong()));
-            if (eligible.isEmpty()) {
-                return new Result(false, "Lakeside behöver fler bostadsplatser, "
-                        + "men jag hittar ingen tillgänglig registrerad Residence "
-                        + "som kan byggas eller uppgraderas utan en ny ritningsplacering. "
-                        + "Jag lägger därför ingen osäker order. "
-                        + "Vi behöver ansluta Structurize-placering för nya hus eller vägar.");
-            }
-
-            // Explicit proof of a new work-order ID after invoking the official
-            // requestUpgrade API. Otherwise never claim it was queued.
-            Candidate selected = eligible.get(0);
-            Set<?> before = new HashSet<>(orders.keySet());
-            Method request = selected.building().getClass().getMethod(
-                    "requestUpgrade", Player.class, BlockPos.class);
-            request.invoke(selected.building(), player, BlockPos.ZERO);
-
-            Map<?, ?> after = (Map<?, ?>) invoke(work, "getWorkOrders");
-            for (Map.Entry<?, ?> entry : after.entrySet()) {
-                if (before.contains(entry.getKey()) || entry.getValue() == null) {
-                    continue;
-                }
-                Object site = invoke(entry.getValue(), "getLocation");
-                if (!selected.position().equals(site)) continue;
-
-                String action = selected.level() == 0
-                        ? "bygga bostaden" : "uppgradera bostaden";
-                return new Result(true, "Jag har undersökt bostadsbehovet och lagt "
-                        + "en VERKLIG MineColonies-arbetsorder (#" + entry.getKey()
-                        + ") för att " + action + " vid "
-                        + selected.position().toShortString() + ". "
-                        + "Byggaren behöver tillgängligt material och rätt nivå.");
-            }
-            return new Result(false, "Jag försökte beställa en Residence-byggnation "
-                    + "genom MineColonies, men ingen ny arbetsorder skapades. "
-                    + "Kontrollera forskningskrav, ritningsnivå och Builder-hus.");
+            String report = queued.isEmpty() ? "Inga nya byggordrar skapades." :
+                    "Verkliga MineColonies-ordrar i byggkön: " + String.join("; ", queued) + ".";
+            if (rejected > 0) report += " MineColonies accepterade inte " + rejected
+                    + " andra byggförsök; kontrollera forskningskrav och byggarnas nivå/avstånd.";
+            if (!nextReport.isEmpty()) report += " " + nextReport;
+            if (queued.isEmpty() && next == null && rejected == 0) report +=
+                    " Grundfunktionerna finns redan eller är planerade. Jag bevakar bostadsbehov och byggkö.";
+            return new Result(!queued.isEmpty(), report);
 
         } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            com.mojang.logging.LogUtils.getLogger().warn("AI Kingdoms colony development failed", error);
             Throwable cause = error instanceof InvocationTargetException invocation
                     ? invocation.getTargetException() : error;
             return new Result(false, "Stadsplaneringen kunde inte slutföras: "
-                    + cause.getClass().getSimpleName() + ". Inga nya arbetsordrar "
-                    + "har kunnat bekräftas.");
+                    + cause.getClass().getSimpleName() + ". Ett tidigare delsteg kan ha genomförts. "
+                    + "Kontrollera kolonistatus och serverloggen innan nästa försök.");
         }
+    }
+
+    private static String buildingType(Object building) throws ReflectiveOperationException {
+        return String.valueOf(invoke(invoke(building, "getBuildingType"), "getRegistryName"))
+                .replace("minecolonies:", "");
+    }
+
+    private static String queue(ServerPlayer player, Object colony, Object work, Object building)
+            throws ReflectiveOperationException {
+        BlockPos position = (BlockPos) invoke(building, "getPosition");
+        Map<?, ?> beforeOrders = (Map<?, ?>) invoke(work, "getWorkOrders");
+        for (Object order : beforeOrders.values()) {
+            if (order != null && position.equals(invoke(order, "getLocation"))) return null;
+        }
+        Set<?> before = new HashSet<>(beforeOrders.keySet());
+        building.getClass().getMethod("requestUpgrade", Player.class, BlockPos.class)
+                .invoke(building, player, BlockPos.ZERO);
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) invoke(work, "getWorkOrders")).entrySet()) {
+            if (before.contains(entry.getKey()) || entry.getValue() == null
+                    || !position.equals(invoke(entry.getValue(), "getLocation"))) continue;
+            // Existing priorities and active builders remain untouched. New tasks receive
+            // successively lower priorities, making the verified queue order deterministic.
+            int lowest = 0;
+            for (Object order : beforeOrders.values()) {
+                if (order != null && order != entry.getValue()) lowest = Math.min(lowest,
+                        ((Number) invoke(order, "getPriority")).intValue());
+            }
+            int priority = lowest > -100000 ? lowest - 1 : lowest;
+            entry.getValue().getClass().getMethod("setPriority", int.class).invoke(entry.getValue(), priority);
+            work.getClass().getMethod("setDirty", boolean.class).invoke(work, true);
+            invoke(colony, "markDirty");
+            return "#" + entry.getKey() + " " + buildingType(building) + " vid " + position.toShortString();
+        }
+        return null;
     }
 
     private record Candidate(Object building, BlockPos position, int level, int maxLevel) {
@@ -240,7 +248,7 @@ public final class ColonyDevelopmentPlanner {
         return colony;
     }
 
-    private static Object invoke(Object value, String name)
+    static Object invoke(Object value, String name)
             throws ReflectiveOperationException {
         if (value == null) throw new ReflectiveOperationException(name + " on null");
         return value.getClass().getMethod(name).invoke(value);

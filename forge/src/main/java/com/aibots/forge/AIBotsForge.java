@@ -379,9 +379,9 @@ public class AIBotsForge {
             npc.setStewardEnabled(true, player.getUUID());
             player.sendSystemMessage(Component.literal(
                     npc.botName() + " är nu aktiv stadsförvaltare. "
-                    + "Varannan minut undersöker han bostadsbehovet när du är i närheten. "
-                    + "Han kan bara beställa bygg/uppgradering på registrerade bostadstomter; "
-                    + "nya tomter och vägar kräver fortfarande ritningar.")
+                    + "Varannan minut planerar han byggkön när du är i närheten. "
+                    + "Han kan placera nya MineColonies-tomter med kolonins ritningar och "
+                    + "köa byggprojekt åt Builders utan nya godkännanden.")
                     .withStyle(ChatFormatting.GREEN));
             ColonyDevelopmentPlanner.Result first =
                     ColonyDevelopmentPlanner.develop(player, npc);
@@ -407,6 +407,11 @@ public class AIBotsForge {
      * No chunks are force-loaded, and no LLM is allowed to mutate the colony.
      */
     @SubscribeEvent
+    public void onServerStopped(net.minecraftforge.event.server.ServerStoppedEvent event) {
+        ColonyBlueprintPlacement.clear();
+    }
+
+    @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
@@ -423,9 +428,10 @@ public class AIBotsForge {
                         || owner.distanceToSqr(bot) > 128.0D * 128.0D) {
                     continue;
                 }
+                String previousReport = bot.getStewardReport();
                 ColonyDevelopmentPlanner.Result result =
                         ColonyDevelopmentPlanner.develop(owner, bot);
-                if (result.modified()) {
+                if (result.modified() || !result.description().equals(previousReport)) {
                     owner.sendSystemMessage(Component.literal(
                             bot.botName() + " (stadsförvaltare): "
                             + result.description()).withStyle(ChatFormatting.GREEN));
