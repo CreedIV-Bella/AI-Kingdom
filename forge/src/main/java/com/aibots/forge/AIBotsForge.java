@@ -4,6 +4,7 @@ import com.aibots.common.ai.AiConfig;
 import com.aibots.common.ai.AiService;
 import com.aibots.common.entity.AiBotEntity;
 import com.aibots.common.entity.PlayerConversation;
+import com.aibots.common.entity.VillageInspection;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
@@ -52,6 +53,8 @@ public class AIBotsForge {
                     .executes(this::wander))
                 .then(Commands.literal("status")
                     .executes(this::status))
+                .then(Commands.literal("inspect")
+                    .executes(this::inspect))
                 .then(Commands.literal("go")
                     .then(Commands.argument("position", Vec3Argument.vec3())
                         .executes(this::go)))
@@ -182,6 +185,15 @@ public class AIBotsForge {
         ctx.getSource().sendSuccess(() ->
                 Component.literal(bot.botName() + ": " + bot.getTravelReport()
                         + " (läge " + bot.getMoveMode() + ")"), false);
+        return 1;
+    }
+
+    private int inspect(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        AiBotEntity bot = selectedNpc(ctx);
+        if (bot == null) return 0;
+        String report = VillageInspection.inspect(bot);
+        ctx.getSource().sendSuccess(() ->
+                Component.literal(bot.botName() + ": " + report), false);
         return 1;
     }
 
