@@ -5,6 +5,7 @@ import com.aibots.common.ai.AiService;
 import com.aibots.common.entity.AiBotEntity;
 import com.aibots.common.entity.PlayerConversation;
 import com.aibots.common.entity.VillageInspection;
+import com.aibots.common.entity.CreateInspection;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
@@ -55,6 +56,9 @@ public class AIBotsForge {
                     .executes(this::status))
                 .then(Commands.literal("inspect")
                     .executes(this::inspect))
+                .then(Commands.literal("create")
+                    .then(Commands.literal("inspect")
+                        .executes(this::inspectCreate)))
                 .then(Commands.literal("go")
                     .then(Commands.argument("position", Vec3Argument.vec3())
                         .executes(this::go)))
@@ -192,6 +196,15 @@ public class AIBotsForge {
         AiBotEntity bot = selectedNpc(ctx);
         if (bot == null) return 0;
         String report = VillageInspection.inspect(bot);
+        ctx.getSource().sendSuccess(() ->
+                Component.literal(bot.botName() + ": " + report), false);
+        return 1;
+    }
+
+    private int inspectCreate(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        AiBotEntity bot = selectedNpc(ctx);
+        if (bot == null) return 0;
+        String report = CreateInspection.inspect(bot);
         ctx.getSource().sendSuccess(() ->
                 Component.literal(bot.botName() + ": " + report), false);
         return 1;
