@@ -7,6 +7,7 @@ import com.aibots.common.ai.AiService;
 import com.aibots.common.ai.AiSettings;
 import com.aibots.common.entity.AiBotEntity;
 import com.aibots.common.entity.PlayerConversation;
+import com.aibots.forge.client.VoiceReplyOutbox;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -45,6 +46,8 @@ public final class ModNetwork {
                 SettingsSyncMessage::decode, SettingsSyncMessage::handle);
         CHANNEL.registerMessage(id++, SettingsMessage.class, SettingsMessage::encode,
                 SettingsMessage::decode, SettingsMessage::handle);
+        CHANNEL.registerMessage(id++, VoiceReplyMessage.class, VoiceReplyMessage::encode,
+                VoiceReplyMessage::decode, VoiceReplyMessage::handle);
     }
 
     // ---------------- Ask: client -> server ----------------
@@ -104,6 +107,43 @@ public final class ModNetwork {
             context.enqueueWork(() -> AiNetworking.onReply(msg.prefix, msg.reply));
             context.setPacketHandled(true);
         }
+    }
+
+    // ---------------- NPC voice reply: server -> client ----------------
+
+    public static class VoiceReplyMessage {
+        final String npcName;
+        final String response;
+
+        VoiceReplyMessage(String npcName, String response) {
+            this.npcName = npcName;
+            this.response = response;
+        }
+
+        static void encode(VoiceReplyMessage msg, FriendlyByteBuf buf) {
+            buf.writeUtf(msg.npcName, 100);
+            buf.writeUtf(msg.response, 1024);
+        }
+
+        static VoiceReplyMessage decode(FriendlyByteBuf buf) {
+            return new VoiceReplyMessage(buf.readUtf(100), buf.readUtf(1024));
+        }
+
+        static void handle(VoiceReplyMessage msg, Supplier<NetworkEvent.Context> ctx) {
+            NetworkEvent.Context context = ctx.get();
+            context.enqueueWork(() -> VoiceReplyOutbox.send(msg.npcName, msg.response));
+            context.setPacketHandled(true);
+        }
+    }
+
+    /** Only actual selected NPCs get speech, never the global assistant. */
+    public static void speakNpc(ServerPlayer player, AiBotEntity bot, String reply) {
+        if (bot == null || player == null || reply == null || reply.isBlank()) {
+            return;
+        }
+        String clipped = reply.length() > 1000 ? reply.substring(0, 1000) : reply;
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                new VoiceReplyMessage(bot.botName(), clipped));
     }
 
     // ---------------- Settings request: client -> server ----------------
@@ -226,6 +266,7 @@ public final class ModNetwork {
             String identityReply = target.verifiedReply(message);
             if (identityReply != null) {
                 callback.accept(prefix, identityReply);
+                speakNpc(player, target, identityReply);
                 return;
             }
             system = target.getPersonality();
@@ -238,8 +279,12 @@ public final class ModNetwork {
         }
 
         player.sendSystemMessage(Component.literal("Thinking...").withStyle(ChatFormatting.GRAY));
+        AiBotEntity speaker = target;
         AiService.ask(system, message).thenAccept(reply ->
-                player.server.execute(() -> callback.accept(prefix, reply)));
+                player.server.execute(() -> {
+                    callback.accept(prefix, reply);
+                    speakNpc(player, speaker, reply);
+                }));
     }
 
     public interface ReplyCallback {
