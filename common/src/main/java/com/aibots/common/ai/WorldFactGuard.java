@@ -13,7 +13,8 @@ public final class WorldFactGuard {
 
     public static final String UNKNOWN_WORLD_STATE =
             "Jag har ännu inte tillgång till verifierad information om vårt rikes "
-            + "soldater, resurser eller byggnader. Jag vill inte hitta på några siffror.";
+            + "soldater, resurser eller byggnader. Jag vill inte hitta på några siffror. "
+            + "Jag kan ännu inte verifiera om våra Create-maskiner eller tåg fungerar.";
 
     private WorldFactGuard() {
     }
@@ -48,7 +49,8 @@ public final class WorldFactGuard {
         boolean concernsOurWorld = containsAny(padded,
                 " vi ", " oss ", " vårt ", " vår ", " våra ",
                 " mitt ", " mina ", " min ", " riket ", " kungadömet ",
-                " kungariket ", " kolonin ", " armén ", " staden ");
+                " kungariket ", " kolonin ", " armén ", " staden ",
+                " fabriken ", " maskinerna ", " järnvägen ", " tågen ");
 
         boolean concernsGameState = containsAny(question,
                 "soldat", "infanter", "husar", "trupp", "armé", "arme",
@@ -56,7 +58,10 @@ public final class WorldFactGuard {
                 "fiend", "resurs", "guld", "järn", "silver", "lager",
                 "förråd", "matförråd", "byggnad", "slott", "hus",
                 "befolk", "invånar", "borg", "stad", "städer", "gruva",
-                "territori", "gräns", "koloni", "rike", "kungadöme");
+                "territori", "gräns", "koloni", "rike", "kungadöme",
+                "fabrik", "järnväg", "tåg", "räls", "maskin", "transportband",
+                "kugghjul", "kraftverk", "rotationskraft", "vattenhjul",
+                "produktion", "tågstation");
 
         boolean asksForFacts = containsAny(question,
                 "hur många", "hur mycket", "hur stor", "hur stark",
@@ -65,7 +70,10 @@ public final class WorldFactGuard {
                 "berätta om", "beskriv vårt", "visa våra",
                 "finns det", "vad äger", "vad finns",
                 "how many", "what do we have", "report",
-                "tell me about our", "what is our");
+                "tell me about our", "what is our",
+                "hur fungerar", "fungerar", "är igång", "är vår", "producerar",
+                "är ansluten", "är anslutna", "kopplad", "kopplat",
+                "hur går", "var går", "var ligger", "räcker");
 
         if (concernsOurWorld && concernsGameState && asksForFacts) {
             return UNKNOWN_WORLD_STATE;
