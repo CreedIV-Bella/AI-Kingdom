@@ -95,6 +95,7 @@ public class AIBotsForge {
             String identityReply = target.verifiedReply(message);
             if (identityReply != null) {
                 player.sendSystemMessage(Component.literal(prefix + identityReply).withStyle(ChatFormatting.WHITE));
+                ModNetwork.speakNpc(player, target, identityReply);
                 return 1;
             }
             system = target.getPersonality();
@@ -109,6 +110,7 @@ public class AIBotsForge {
         AiService.ask(system, message).thenAccept(reply -> {
             player.server.execute(() -> {
                 player.sendSystemMessage(Component.literal(prefix + reply).withStyle(ChatFormatting.WHITE));
+                ModNetwork.speakNpc(player, target, reply);
             });
         });
         return 1;
