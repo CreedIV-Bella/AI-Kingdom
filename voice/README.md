@@ -39,12 +39,12 @@ OBS: Python-programmet och **nybyggd Java-JAR behövs samtidigt**.
 
 5. Välj NPC genom att högerklicka. Verifiera manuellt med `/aibots who`.
 6. Stäng Minecraft-chatten. Med spelet i förgrunden trycker du
-   **Ctrl+Alt+V** och pratar i 5 sekunder.
+   **Ctrl+Shift+F8** och pratar i 5 sekunder.
 7. Python visar `Hörde ...` och `Röstkommandot är köat`.
 8. Minecraft-chatten bör sedan visa `Röstorder skickad: ...` och resultatet
    från `/aibots` eller `/ask`.
 
-**F9 används inte längre.** Om du fortfarande ser `F9` i terminalen
+**F9 och Ctrl+Alt+V används inte längre.** Om du fortfarande ser `F9` i terminalen
 kör du den gamla Python-processen eller inte den uppdaterade koden.
 
 ### Testa följande fraser
@@ -68,8 +68,8 @@ kör du den gamla Python-processen eller inte den uppdaterade koden.
   Ta inte bort filen medan ett kommando behandlas.
 - Kontrollera att både Python och Minecraft körs under **samma Windows-användare**.
 - Minecraft-chatten måste vara stängd; även andra GUI-fönster ska vara stängda.
-- Om Ctrl+Alt+V används av ett annat program, ändra `HOTKEY` i
-  `voice_to_minecraft.py` och starta om skriptet.
+- Om Ctrl+Shift+F8 används av ett annat program, ändra `HOTKEY` i
+  `voice_to_minecraft.py` (eller sätt variabeln `AI_KINGDOMS_VOICE_HOTKEY`) och starta om skriptet.
 - Felaktig transkribering är ett annat problem. Du kan testa en större Whisper-modell,
   men det kostar mer CPU: i CMD kör `set AI_KINGDOMS_WHISPER_MODEL=small`
   direkt innan du startar Python-programmet.
@@ -88,3 +88,23 @@ kör du den gamla Python-processen eller inte den uppdaterade koden.
   garanterar inte att en vägsökning har lyckats eller att ett arbete är färdigt.
 - Nästa ljuddel är NPC-specifik svensk TTS (t.ex. Piper) efter att vi har
   verifierat kommandobryggan.
+
+### Om inventory öppnas när du pratar
+
+Den tidigare knappen `Ctrl+Alt+V` aktiverade inventory i det aktuella
+modpaketet, trots att röstkommandona nådde Minecraft. Därför är ny standard
+**Ctrl+Shift+F8**, och Python försöker stoppa tangenttryckningarna från
+att skickas vidare till spelet med `suppress=True` (Windows only).
+
+Kontrollera först att nya koden har hämtats och den **gamla** Python-processen
+har avslutats. Om inventory fortfarande öppnas, välj ett kortkommando som
+inte är kopplat till någon åtgärd under Minecraft > Inställningar >
+Kontroller > Tangentbindningar. Du kan testa t.ex.:
+
+```cmd
+set AI_KINGDOMS_VOICE_HOTKEY=ctrl+shift+f6
+voice\.venv\Scripts\python.exe voice\voice_to_minecraft.py
+```
+
+Vissa spel använder raw input och kan kringgå global keyboard suppression;
+därför är rätt tangentbindning i modpaketet sista säkerhetsåtgärden.
