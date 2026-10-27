@@ -88,6 +88,7 @@ public final class VoiceCommandInbox {
         }
 
         return command.equals("/aibots who")
+                || command.equals("/aibots select Aldric Ravencrest")
                 || command.equals("/aibots follow")
                 || command.equals("/aibots stay")
                 || command.equals("/aibots wander")
