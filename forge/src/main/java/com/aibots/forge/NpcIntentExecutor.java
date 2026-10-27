@@ -2,6 +2,7 @@ package com.aibots.forge;
 
 import com.aibots.common.ai.NpcNaturalIntent;
 import com.aibots.common.ai.ColonyPriorityIntent;
+import com.aibots.common.ai.ColonyDevelopmentIntent;
 import com.aibots.common.entity.AiBotEntity;
 import com.aibots.common.entity.CreateInspection;
 import com.aibots.common.entity.VillageInspection;
@@ -20,6 +21,27 @@ public final class NpcIntentExecutor {
         if (player == null || bot == null || bot.level() != player.level()) {
             return null;
         }
+        ColonyDevelopmentIntent.Action development = ColonyDevelopmentIntent.parse(speech);
+        if (development != null) {
+            if (development == ColonyDevelopmentIntent.Action.DEVELOP_ONCE) {
+                return ColonyDevelopmentPlanner.develop(player, bot).description();
+            }
+            if (!ColonyDevelopmentPlanner.isOwner(player, bot)) {
+                return "Endast kolonins ägare kan aktivera eller pausa automatiskt byggansvar.";
+            }
+            if (development == ColonyDevelopmentIntent.Action.AUTO_ON) {
+                bot.setStewardEnabled(true, player.getUUID());
+                return "Jag tar ansvar för stadens bostadsutveckling inom registrerade "
+                        + "MineColonies-tomter. " + ColonyDevelopmentPlanner.develop(player, bot).description();
+            }
+            if (bot.getStewardOwnerUUID() != null
+                    && !bot.getStewardOwnerUUID().equals(player.getUUID())) {
+                return "Endast min ursprungliga uppdragsgivare kan pausa mitt stadsansvar.";
+            }
+            bot.setStewardEnabled(false, null);
+            return "Självständig stadsplanering är pausad.";
+        }
+
         ColonyPriorityIntent.Order priority = ColonyPriorityIntent.parse(speech);
         if (priority != null) {
             return priority.guardTower()
