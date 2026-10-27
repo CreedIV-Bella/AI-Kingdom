@@ -47,6 +47,9 @@ public class AIBotsForge {
             Commands.literal("aibots")
                 .then(Commands.literal("who")
                     .executes(this::who))
+                .then(Commands.literal("select")
+                    .then(Commands.argument("name", StringArgumentType.greedyString())
+                        .executes(this::selectByName)))
                 .then(Commands.literal("follow")
                     .executes(this::follow))
                 .then(Commands.literal("stay")
@@ -112,10 +115,10 @@ public class AIBotsForge {
             }
             system = target.getPersonality();
         } else {
-            prefix = "[AI-assistent] ";
-            system = AiConfig.get().systemPrompt;
-            player.sendSystemMessage(Component.literal("Ingen NPC vald. Högerklicka på en NPC eller använd /aibots who.")
+            player.sendSystemMessage(Component.literal(
+                    "Ingen NPC vald. Högerklicka på Aldric eller använd /aibots select Aldric Ravencrest.")
                     .withStyle(ChatFormatting.YELLOW));
+            return 0;
         }
 
         String contextualMessage = target != null ? target.messageWithHistory(message) : message;
@@ -154,6 +157,48 @@ public class AIBotsForge {
         return 1;
     }
 
+
+    /** Select an NPC by its saved in-world name; useful after relogging or unloading. */
+    private int selectByName(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
+        ServerPlayer player;
+        try {
+            player = ctx.getSource().getPlayerOrException();
+        } catch (Exception e) {
+            ctx.getSource().sendFailure(Component.literal("Detta kommando kräver en spelare."));
+            return 0;
+        }
+
+        String requested = StringArgumentType.getString(ctx, "name").trim();
+        if (requested.isBlank() || requested.length() > 80) {
+            ctx.getSource().sendFailure(Component.literal("Ange ett giltigt NPC-namn."));
+            return 0;
+        }
+        AiBotEntity match = null;
+        for (var entity : player.serverLevel().getAllEntities()) {
+            if (entity instanceof AiBotEntity bot
+                    && bot.isAlive()
+                    && bot.botName().equalsIgnoreCase(requested)
+                    && bot.distanceToSqr(player) <= 32.0D * 32.0D) {
+                if (match != null) {
+                    ctx.getSource().sendFailure(Component.literal(
+                            "Flera NPC:er har det namnet. Högerklicka på den rätta."));
+                    return 0;
+                }
+                match = bot;
+            }
+        }
+        if (match == null) {
+            ctx.getSource().sendFailure(Component.literal(
+                    "Hittade inte " + requested
+                    + " inom 32 block i laddade delar av denna dimension."));
+            return 0;
+        }
+        PlayerConversation.setTarget(player, match);
+        player.sendSystemMessage(Component.literal(
+                "Nu pratar du med " + match.botName() + ".")
+                .withStyle(ChatFormatting.GREEN));
+        return 1;
+    }
 
     private AiBotEntity selectedNpc(CommandContext<net.minecraft.commands.CommandSourceStack> ctx) {
         ServerPlayer player;
